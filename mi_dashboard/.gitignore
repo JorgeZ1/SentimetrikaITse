@@ -1,0 +1,9 @@
+# Folders to ignore
+__pycache__/
+venv/
+*.pyc
+.vscode/
+
+# OS generated files
+.DS_Store
+.env
