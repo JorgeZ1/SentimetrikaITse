@@ -1,6 +1,7 @@
 # auth.py
 users = {
-    "demo@correo.com": "12345"   # usuario de prueba
+    "demo@correo.com": "12345",   # usuario de prueba
+    "a@e.com": "12345"
 }
 
 def authenticate(email: str, password: str) -> bool:

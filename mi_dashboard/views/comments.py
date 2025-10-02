@@ -1,74 +1,68 @@
-# views/comments.py
 import flet as ft
-from data import comments
-from theme import TEXT_DARK, ACCENT_MAGENTA
+# Hacemos referencia a la carpeta 'mi_dashboard' para encontrar 'utils'
+from utils import procesar_y_agrupar_publicaciones, get_impact_icon
 
+# Usamos ft.Colors con C mayúscula como indicaste
+TEXT_DARK = ft.Colors.BLACK
 
-def create_comments_view(page: ft.Page, post_id: int):
-    post_comments = comments.get(post_id, [])
+def create_comments_view(page: ft.Page, pub_id: str):
+    
+    todas_las_publicaciones = procesar_y_agrupar_publicaciones()
+    # Buscamos la publicación específica que coincide con el ID de la URL
+    publicacion_actual = next((p for p in todas_las_publicaciones if p['id'] == pub_id), None)
 
-    def get_comment_color(c: str):
-        c_lower = c.lower()
-        if "bueno" in c_lower or "excelente" in c_lower or "positivo" in c_lower:
-            return "#D4F8E8"  # verde suave
-        elif "malo" in c_lower or "terrible" in c_lower or "negativo" in c_lower:
-            return "#FDDDDD"  # rojo suave
-        else:
-            return "#F0F0F0"  # neutro (gris claro)
+    if not publicacion_actual:
+        return ft.View(
+            f"/comments/{pub_id}",
+            [
+                ft.Text("Publicación no encontrada.", size=20, text_align=ft.TextAlign.CENTER),
+                ft.ElevatedButton("Volver al Dashboard", on_click=lambda _: page.go("/dashboard"))
+            ],
+            vertical_alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER
+        )
 
-    return ft.View(
-        f"/comments/{post_id}",
-        padding=20,
-        controls=[
-            ft.Column(
-                [
-                    # Header
+    # Creamos las tarjetas para cada comentario de esta publicación
+    lista_tarjetas_comentarios = []
+    for comentario in publicacion_actual.get("comentarios", []):
+        sentimiento_info = comentario.get("analisis_sentimiento", {})
+        etiqueta = sentimiento_info.get("etiqueta", "UNKNOWN").lower()
+        
+        card = ft.Card(
+            content=ft.Container(
+                padding=15,
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.PERSON, color=ft.Colors.BLUE_GREY_400),
+                        ft.Text(f"{comentario.get('autor', 'Anónimo')}", weight="bold"),
+                    ]),
+                    ft.Text(f"\"{comentario.get('texto_original', '')}\""),
+                    ft.Divider(color=ft.Colors.GREY_300),
                     ft.Row(
                         [
-                            ft.Text(
-                                "💬 Comentarios",
-                                size=24,
-                                weight="bold",
-                                color=TEXT_DARK,
-                            ),
-                            ft.ElevatedButton(
-                                "Volver",
-                                bgcolor=ACCENT_MAGENTA,
-                                color="white",
-                                style=ft.ButtonStyle(
-                                    shape=ft.RoundedRectangleBorder(radius=12)
-                                ),
-                                on_click=lambda _: page.go("/dashboard"),
-                            ),
+                            ft.Text("Impacto:", weight="bold"),
+                            ft.Row([get_impact_icon(etiqueta), ft.Text(etiqueta.capitalize())]),
                         ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN
                     ),
-                    # Lista de comentarios
-                    ft.Column(
-                        [
-                            ft.Container(
-                                padding=15,
-                                border_radius=12,
-                                bgcolor=get_comment_color(c),
-                                shadow=ft.BoxShadow(
-                                    spread_radius=1,
-                                    blur_radius=6,
-                                    color="#aaa",
-                                    offset=ft.Offset(2, 2),
-                                ),
-                                content=ft.Text(c, color=TEXT_DARK, size=14),
-                            )
-                            for c in post_comments
-                        ],
-                        spacing=15,
-                        expand=True,
-                        scroll="auto",
-                    ),
-                ],
-                spacing=20,
-                expand=True,
+                ])
             )
-        ],
-        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-        vertical_alignment=ft.MainAxisAlignment.START,
+        )
+        lista_tarjetas_comentarios.append(card)
+
+    return ft.View(
+        f"/comments/{pub_id}",
+        scroll=ft.ScrollMode.ADAPTIVE,
+        controls=[
+            ft.Row([
+                ft.IconButton(
+                    icon=ft.Icons.ARROW_BACK,
+                    on_click=lambda _: page.go("/dashboard"),
+                    tooltip="Volver al Dashboard"
+                ),
+                ft.Text(publicacion_actual["titulo"], size=22, weight="bold", expand=True),
+            ]),
+            ft.Text(f"Mostrando {len(lista_tarjetas_comentarios)} comentarios:", size=16, color="gray"),
+            ft.Column(lista_tarjetas_comentarios, spacing=15)
+        ]
     )
