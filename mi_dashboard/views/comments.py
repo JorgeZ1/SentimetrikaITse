@@ -1,5 +1,5 @@
 import flet as ft
-import json
+import sqlite3
 
 # --- Paleta de colores (sin cambios) ---
 BACKGROUND_COLOR = "#1f2630"
@@ -34,55 +34,55 @@ def get_sentiment_display(sentiment_data: dict):
         ],
         spacing=5,
     )
-
-# --- Función para cargar datos (sin cambios) ---
-def cargar_datos():
-    try:
-        # Ajusta esta ruta si es necesario para tu estructura
-        with open('resultados_analisis.json', 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
-
+DB_NAME = "sentiment_analysis.db"
 # --- Vista de comentarios (CON MODIFICACIONES) ---
 def create_comments_view(page: ft.Page, pub_id: str):
-    datos_completos = cargar_datos()
-    publicacion_actual = next((pub for pub in datos_completos if pub.get("id_publicacion") == pub_id), None)
-            
+    con = sqlite3.connect(DB_NAME)
+    con.row_factory = sqlite3.Row
+    cur = con.cursor()
+
+    # 1. Obtener los datos de la publicación específica
+    cur.execute("SELECT * FROM publications WHERE id = ?", (pub_id,))
+    publicacion_actual = cur.fetchone()
+
+    # 2. Obtener los comentarios de esa publicación
+    cur.execute("SELECT * FROM comments WHERE publication_id = ?", (pub_id,))
+    comentarios_actuales = cur.fetchall()
+    
+    con.close()
+
     lista_de_comentarios = []
     
     if publicacion_actual:
-        # --- MODIFICADO: Lógica para encontrar el título correcto ---
-        titulo_texto = publicacion_actual.get("titulo_traducido", publicacion_actual.get("titulo_publicacion", "Título no encontrado"))
+        titulo_texto = publicacion_actual['title_translated'] or publicacion_actual['title_original'] or "Título no encontrado"
         titulo_publicacion = ft.Text(
             titulo_texto,
-            size=20, # Tamaño ajustado
-            weight="bold",
-            color=PRIMARY_TEXT_COLOR,
-            text_align=ft.TextAlign.CENTER # Centrado
+            size=20, weight="bold", color=ft.Colors.WHITE, text_align=ft.TextAlign.CENTER
         )
 
-        for comentario in publicacion_actual.get("comentarios", []):
+        for comentario in comentarios_actuales:
+            # Creamos un diccionario de sentimiento para la función auxiliar
+            sentiment_dict = {"etiqueta": comentario['sentiment_label']}
+
             tarjeta_comentario = ft.Container(
                 content=ft.Column([
-                    # --- MODIFICADO: Fila para Autor y Sentimiento ---
                     ft.Row(
                         [
-                            ft.Text(f"Autor: {comentario.get('autor', 'Anónimo')}", weight="bold", color=SECONDARY_TEXT_COLOR),
-                            get_sentiment_display(comentario.get("analisis_sentimiento", {}))
+                            ft.Text(f"Autor: {comentario['author'] or 'Anónimo'}", weight="bold", color=ft.Colors.GREY_400),
+                            get_sentiment_display(sentiment_dict)
                         ],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN
                     ),
                     ft.Divider(height=5, color=ft.Colors.GREY_800),
                     ft.Text(
-                        comentario.get('texto_traducido', 'Texto no disponible.'),
+                        comentario['text_translated'] or 'Texto no disponible.',
                         size=15,
-                        color=PRIMARY_TEXT_COLOR
+                        color=ft.Colors.WHITE
                     )
                 ]),
                 padding=15,
                 border_radius=8,
-                bgcolor=CARD_COLOR,
+                bgcolor="#2c3440",
             )
             lista_de_comentarios.append(tarjeta_comentario)
     else:
