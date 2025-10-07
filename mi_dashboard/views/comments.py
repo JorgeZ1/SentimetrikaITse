@@ -1,68 +1,117 @@
 import flet as ft
-# Hacemos referencia a la carpeta 'mi_dashboard' para encontrar 'utils'
-from utils import procesar_y_agrupar_publicaciones, get_impact_icon
+import json
 
-# Usamos ft.Colors con C mayúscula como indicaste
-TEXT_DARK = ft.Colors.BLACK
+# --- Paleta de colores (sin cambios) ---
+BACKGROUND_COLOR = "#1f2630"
+CARD_COLOR = "#2c3440"
+PRIMARY_TEXT_COLOR = ft.Colors.WHITE
+SECONDARY_TEXT_COLOR = ft.Colors.GREY_400
+ACCENT_COLOR = "#3399ff"
 
-def create_comments_view(page: ft.Page, pub_id: str):
+# --- AÑADIDO: Función para obtener ícono y texto del sentimiento ---
+def get_sentiment_display(sentiment_data: dict):
+    """Devuelve un ft.Row con un ícono y texto para el sentimiento."""
+    etiqueta = sentiment_data.get("etiqueta", "NEUTRAL").upper()
     
-    todas_las_publicaciones = procesar_y_agrupar_publicaciones()
-    # Buscamos la publicación específica que coincide con el ID de la URL
-    publicacion_actual = next((p for p in todas_las_publicaciones if p['id'] == pub_id), None)
+    colores = {
+        "POSITIVE": "green",
+        "NEGATIVE": "red",
+        "NEUTRAL": "grey"
+    }
+    iconos = {
+        "POSITIVE": ft.Icons.THUMB_UP,
+        "NEGATIVE": ft.Icons.THUMB_DOWN,
+        "NEUTRAL": ft.Icons.CIRCLE_OUTLINED
+    }
+    
+    color = colores.get(etiqueta, "grey")
+    icono = iconos.get(etiqueta, ft.Icons.HELP)
+    
+    return ft.Row(
+        [
+            ft.Icon(name=icono, color=color, size=16),
+            ft.Text(etiqueta.capitalize(), color=color, size=12, weight="bold")
+        ],
+        spacing=5,
+    )
 
-    if not publicacion_actual:
-        return ft.View(
-            f"/comments/{pub_id}",
-            [
-                ft.Text("Publicación no encontrada.", size=20, text_align=ft.TextAlign.CENTER),
-                ft.ElevatedButton("Volver al Dashboard", on_click=lambda _: page.go("/dashboard"))
-            ],
-            vertical_alignment=ft.MainAxisAlignment.CENTER,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER
+# --- Función para cargar datos (sin cambios) ---
+def cargar_datos():
+    try:
+        # Ajusta esta ruta si es necesario para tu estructura
+        with open('resultados_analisis.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+# --- Vista de comentarios (CON MODIFICACIONES) ---
+def create_comments_view(page: ft.Page, pub_id: str):
+    datos_completos = cargar_datos()
+    publicacion_actual = next((pub for pub in datos_completos if pub.get("id_publicacion") == pub_id), None)
+            
+    lista_de_comentarios = []
+    
+    if publicacion_actual:
+        # --- MODIFICADO: Lógica para encontrar el título correcto ---
+        titulo_texto = publicacion_actual.get("titulo_traducido", publicacion_actual.get("titulo_publicacion", "Título no encontrado"))
+        titulo_publicacion = ft.Text(
+            titulo_texto,
+            size=20, # Tamaño ajustado
+            weight="bold",
+            color=PRIMARY_TEXT_COLOR,
+            text_align=ft.TextAlign.CENTER # Centrado
         )
 
-    # Creamos las tarjetas para cada comentario de esta publicación
-    lista_tarjetas_comentarios = []
-    for comentario in publicacion_actual.get("comentarios", []):
-        sentimiento_info = comentario.get("analisis_sentimiento", {})
-        etiqueta = sentimiento_info.get("etiqueta", "UNKNOWN").lower()
-        
-        card = ft.Card(
-            content=ft.Container(
-                padding=15,
+        for comentario in publicacion_actual.get("comentarios", []):
+            tarjeta_comentario = ft.Container(
                 content=ft.Column([
-                    ft.Row([
-                        ft.Icon(ft.Icons.PERSON, color=ft.Colors.BLUE_GREY_400),
-                        ft.Text(f"{comentario.get('autor', 'Anónimo')}", weight="bold"),
-                    ]),
-                    ft.Text(f"\"{comentario.get('texto_original', '')}\""),
-                    ft.Divider(color=ft.Colors.GREY_300),
+                    # --- MODIFICADO: Fila para Autor y Sentimiento ---
                     ft.Row(
                         [
-                            ft.Text("Impacto:", weight="bold"),
-                            ft.Row([get_impact_icon(etiqueta), ft.Text(etiqueta.capitalize())]),
+                            ft.Text(f"Autor: {comentario.get('autor', 'Anónimo')}", weight="bold", color=SECONDARY_TEXT_COLOR),
+                            get_sentiment_display(comentario.get("analisis_sentimiento", {}))
                         ],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN
                     ),
-                ])
+                    ft.Divider(height=5, color=ft.Colors.GREY_800),
+                    ft.Text(
+                        comentario.get('texto_traducido', 'Texto no disponible.'),
+                        size=15,
+                        color=PRIMARY_TEXT_COLOR
+                    )
+                ]),
+                padding=15,
+                border_radius=8,
+                bgcolor=CARD_COLOR,
             )
-        )
-        lista_tarjetas_comentarios.append(card)
+            lista_de_comentarios.append(tarjeta_comentario)
+    else:
+        titulo_publicacion = ft.Text(f"Error: No se encontró la publicación con ID {pub_id}", color="red")
 
+    # --- El resto de la vista no cambia ---
     return ft.View(
         f"/comments/{pub_id}",
+        bgcolor=BACKGROUND_COLOR,
         scroll=ft.ScrollMode.ADAPTIVE,
+        appbar=ft.AppBar(
+            title=ft.Text("Detalles de Publicación", color=PRIMARY_TEXT_COLOR),
+            bgcolor=BACKGROUND_COLOR,
+            leading=ft.IconButton(
+                icon=ft.Icons.ARROW_BACK,
+                icon_color=PRIMARY_TEXT_COLOR,
+                on_click=lambda _: page.go("/dashboard")
+            )
+        ),
         controls=[
-            ft.Row([
-                ft.IconButton(
-                    icon=ft.Icons.ARROW_BACK,
-                    on_click=lambda _: page.go("/dashboard"),
-                    tooltip="Volver al Dashboard"
-                ),
-                ft.Text(publicacion_actual["titulo"], size=22, weight="bold", expand=True),
-            ]),
-            ft.Text(f"Mostrando {len(lista_tarjetas_comentarios)} comentarios:", size=16, color="gray"),
-            ft.Column(lista_tarjetas_comentarios, spacing=15)
-        ]
+            ft.Container( # Contenedor para el título con padding
+                content=titulo_publicacion,
+                padding=ft.padding.symmetric(horizontal=10, vertical=5)
+            ),
+            ft.Divider(height=10, color=ACCENT_COLOR, thickness=1),
+            ft.Column(
+                controls=lista_de_comentarios,
+                spacing=10 # Espaciado entre comentarios
+            )
+        ],
+        padding=10
     )

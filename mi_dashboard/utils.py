@@ -35,27 +35,30 @@ def cargar_datos_analizados():
         print(f"ERROR: No se pudo cargar o decodificar el archivo JSON: {e}")
         return []
 
-# --- ESTA FUNCIÓN NO CAMBIA ---
 def procesar_y_agrupar_publicaciones():
     """
     Toma la lista de comentarios, los agrupa por publicación y calcula el impacto general.
     """
-    comentarios = cargar_datos_analizados()
+    # MODIFICADO: Ahora el nombre de la variable es más claro.
+    datos_analizados = cargar_datos_analizados()
     publicaciones = {}
 
-    for c in comentarios:
-        pub_id = c.get("id_publicacion", "desconocido")
+    # MODIFICADO: El nombre del iterador es más claro.
+    for publicacion_data in datos_analizados:
+        pub_id = publicacion_data.get("id_publicacion", "desconocido")
         
         if pub_id not in publicaciones:
             publicaciones[pub_id] = {
                 "id": pub_id,
-                "titulo": c.get("titulo_publicacion", "Publicación Desconocida"),
+                # --- MODIFICACIÓN CLAVE ---
+                # Intenta obtener el título traducido, si no existe, usa el original.
+                "titulo": publicacion_data.get("titulo_traducido", publicacion_data.get("titulo_publicacion", "Publicación Desconocida")),
                 "comentarios": [],
                 "sentimientos": []
             }
         
-        publicaciones[pub_id]["comentarios"].append(c)
-        etiqueta = c.get("analisis_sentimiento", {}).get("etiqueta", "NEUTRAL").lower()
+        publicaciones[pub_id]["comentarios"].append(publicacion_data)
+        etiqueta = publicacion_data.get("analisis_sentimiento", {}).get("etiqueta", "NEUTRAL").lower()
         publicaciones[pub_id]["sentimientos"].append(etiqueta)
 
     for pub_id, data in publicaciones.items():

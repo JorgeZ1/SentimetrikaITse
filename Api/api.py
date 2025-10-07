@@ -10,9 +10,9 @@ CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
 USER_AGENT = "python:DataScraper:v1.2 (by /u/TuNombreDeUsuario)"
 
 # --- 2. Parámetros de la Extracción ---
-nombre_subreddit = 'UnresolvedMysteries' # Asegúrate de que el subreddit exista
-limite_publicaciones = 7
-limite_comentarios_por_post = 15
+nombre_subreddit = 'AskReddit' # Asegúrate de que el subreddit exista
+limite_publicaciones = 20
+limite_comentarios_por_post = 100
 archivo_salida = "comentarios_estructurados.json"
 
 # Verifica si las credenciales fueron cargadas
