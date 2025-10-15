@@ -1,7 +1,7 @@
-# views/login.py
 import flet as ft
 from auth import authenticate
 from theme import PRIMARY_COLOR, ACCENT_MAGENTA, TEXT_DARK
+# Se asume que estos módulos (auth.py, theme.py) están definidos en tu proyecto.
 
 def create_login_view(page: ft.Page):
     email = ft.TextField(
@@ -11,7 +11,7 @@ def create_login_view(page: ft.Page):
         width=320,
         filled=True,
         fill_color=ft.Colors.GREY_100,
-        color=ft.Colors.BLACK # 👈 Color del texto que se escribe
+        color=ft.Colors.BLACK
     )
     password = ft.TextField(
         label="Contraseña",
@@ -22,7 +22,7 @@ def create_login_view(page: ft.Page):
         width=320,
         filled=True,
         fill_color=ft.Colors.GREY_100,
-        color=ft.Colors.BLACK  # 👈 Color del texto que se escribe
+        color=ft.Colors.BLACK
     )
     remember_me = ft.Checkbox(
         label="Recordar contraseña",
@@ -34,7 +34,9 @@ def create_login_view(page: ft.Page):
 
     def login_action(e):
         if authenticate(email.value, password.value):
-            page.go("/dashboard")
+            # --- MODIFICACIÓN CLAVE: Redirigir a la selección de IA ---
+            page.go("/social_select") 
+            # ---------------------------------------------------------
         else:
             error_text.value = "⚠️ Usuario o contraseña incorrectos"
             page.update()
