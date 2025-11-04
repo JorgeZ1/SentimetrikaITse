@@ -61,7 +61,6 @@ def create_social_select_view(page: ft.Page) -> ft.View:
                         ft.Text("Los datos se mostrarán en el dashboard principal.", italic=True, color=Colors.GREY_500),
                         ft.Container(height=40),
                         
-                        # --- CAMBIO PRINCIPAL AQUÍ ---
                         ft.Row(
                             [
                                 # 1. Reddit (se mantiene)
@@ -91,10 +90,30 @@ def create_social_select_view(page: ft.Page) -> ft.View:
                             alignment=ft.MainAxisAlignment.CENTER,
                             spacing=50
                         ),
-                        # --- FIN DEL CAMBIO ---
                         
                         ft.Container(height=50),
-                        ft.TextButton("Volver al Login", on_click=lambda e: page.go("/login"))
+                        
+                        # --- MODIFICACIÓN AQUÍ ---
+                        # Reemplazamos el TextButton simple por un Row con ambos botones
+                        ft.Row(
+                            [
+                                ft.TextButton(
+                                    "Volver al Login",
+                                    icon=Icons.ARROW_BACK, # Icono añadido para consistencia
+                                    on_click=lambda e: page.go("/login")
+                                ),
+                                ft.ElevatedButton(
+                                    "Actualizar Datos",
+                                    icon=Icons.REFRESH,
+                                    on_click=lambda e: print("Iniciando análisis..."), # Lógica de análisis
+                                    bgcolor=Colors.BLUE_700, # Color a juego con el AppBar
+                                    color=Colors.WHITE,      # Texto en blanco
+                                )
+                            ],
+                            alignment=ft.MainAxisAlignment.CENTER,
+                            spacing=20 # Espacio entre los botones
+                        )
+                        # --- FIN DE LA MODIFICACIÓN ---
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     spacing=20
