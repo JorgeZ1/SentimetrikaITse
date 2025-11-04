@@ -3,8 +3,8 @@ from views import login, register, dashboard, comments, social_select # <--- Imp
 
 def main(page: ft.Page):
     page.title = "Sentimetrika"
-    page.window_width = 1000
-    page.window_height = 800
+    page.window_width = 1000 # type: ignore
+    page.window_height = 800 # type: ignore
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
     page.vertical_alignment = ft.MainAxisAlignment.CENTER
 
@@ -45,7 +45,7 @@ def main(page: ft.Page):
         if len(page.views) > 1:
             page.views.pop()
             top_view = page.views[-1]
-            page.go(top_view.route)
+            page.go(top_view.route) # type: ignore
 
     page.on_route_change = route_change
     page.on_view_pop = view_pop
