@@ -1,8 +1,8 @@
 # views/register.py
 import flet as ft
 import re
-from auth import register_user
-from theme import TEXT_DARK, PRIMARY_COLOR, ACCENT_MAGENTA
+from mi_dashboard.auth import register_user
+from mi_dashboard.theme import TEXT_DARK, PRIMARY_COLOR, ACCENT_MAGENTA
 
 def create_register_view(page: ft.Page):
     """

@@ -1,0 +1,13 @@
+flet
+sqlite3
+transformers
+torch
+sentencepiece
+Mastodon.py
+praw
+discord.py
+python-dotenv
+tqdm
+psycopg2-binary
+sqlalchemy
+facebook-sdk

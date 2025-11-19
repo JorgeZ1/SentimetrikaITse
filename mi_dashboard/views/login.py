@@ -1,6 +1,6 @@
 import flet as ft
-from auth import authenticate
-from theme import PRIMARY_COLOR, ACCENT_MAGENTA, TEXT_DARK
+from mi_dashboard.auth import authenticate
+from mi_dashboard.theme import PRIMARY_COLOR, ACCENT_MAGENTA, TEXT_DARK
 # Se asume que estos módulos (auth.py, theme.py) están definidos en tu proyecto.
 
 def create_login_view(page: ft.Page):

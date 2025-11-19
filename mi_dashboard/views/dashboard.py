@@ -1,5 +1,5 @@
 import flet as ft
-from utils import procesar_y_agrupar_publicaciones, get_impact_icon
+from mi_dashboard.utils import procesar_y_agrupar_publicaciones, get_impact_icon
 # Importamos con mayúsculas, como tu versión de Flet
 from flet import Icons, Colors 
 

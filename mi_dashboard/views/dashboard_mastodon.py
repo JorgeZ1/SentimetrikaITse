@@ -1,0 +1,99 @@
+import flet as ft
+from flet import Colors, Icons
+from Api.database import SessionLocal, Publication 
+
+def get_mastodon_data():
+    session = SessionLocal()
+    publications = []
+    comments_map = {} 
+    
+    try:
+        pubs_db = session.query(Publication).filter(Publication.red_social == 'Mastodon').all()
+        for p in pubs_db:
+            publications.append(p)
+            comments_map[p.id] = [c for c in p.comments]
+    except Exception as e:
+        print(f"Error leyendo DB: {e}")
+    finally:
+        session.close()
+        
+    return publications, comments_map
+
+def get_sentiment_icon(sentiment):
+    if sentiment == 'positive':
+        return ft.Icon(Icons.SENTIMENT_VERY_SATISFIED, color=Colors.GREEN_500)
+    elif sentiment == 'negative':
+        return ft.Icon(Icons.SENTIMENT_VERY_DISSATISFIED, color=Colors.RED_500)
+    else: 
+        return ft.Icon(Icons.SENTIMENT_NEUTRAL, color=Colors.GREY_500)
+
+def create_dashboard_view(page: ft.Page) -> ft.View:
+    # UI Controls
+    publications_list_view = ft.ListView(expand=True, spacing=10, padding=20)
+    comments_list_view = ft.ListView(expand=True, spacing=10, padding=10)
+    selected_post_title = ft.Text("Selecciona un Toot", style=ft.TextThemeStyle.TITLE_MEDIUM)
+
+    # Load Data
+    publications, comments_map = get_mastodon_data()
+
+    if not publications:
+        publications_list_view.controls.append(ft.Text("No hay datos de Mastodon."))
+
+    def on_post_click(e):
+        post_id = e.control.data 
+        selected_post = next((p for p in publications if p.id == post_id), None)
+        if selected_post:
+            selected_post_title.value = f"Comentarios de: {selected_post.title_translated[:50]}..."
+        
+        comments_list_view.controls.clear()
+        comments_for_post = comments_map.get(post_id, [])
+        
+        if not comments_for_post:
+            comments_list_view.controls.append(ft.ListTile(title=ft.Text("Sin comentarios.")))
+        else:
+            for comment in comments_for_post:
+                comments_list_view.controls.append(
+                    ft.Card(
+                        ft.ListTile(
+                            leading=get_sentiment_icon(comment.sentiment_label),
+                            title=ft.Text(f"@{comment.author}", weight=ft.FontWeight.BOLD),
+                            subtitle=ft.Text(comment.text_translated or "")
+                        ),
+                        elevation=2
+                    )
+                )
+        page.update()
+
+    for post in publications:
+        comment_count = len(comments_map.get(post.id, []))
+        publications_list_view.controls.append(
+            ft.Card(
+                content=ft.Container(
+                    ft.ListTile(
+                        title=ft.Text(post.title_translated or "", weight=ft.FontWeight.BOLD),
+                        subtitle=ft.Text(post.title_original or "", italic=True, color=Colors.GREY_500),
+                        trailing=ft.Text(f"{comment_count}", color=Colors.PURPLE_500),
+                        on_click=on_post_click,
+                        data=post.id
+                    ),
+                    padding=10
+                ),
+                elevation=4,
+            )
+        )
+
+    return ft.View(
+        "/dashboard/mastodon",
+        [
+            ft.AppBar(title=ft.Text("🐘 Mastodon"), bgcolor=Colors.PURPLE_700, actions=[ft.IconButton(Icons.ARROW_BACK, on_click=lambda _: page.go("/social_select"))]),
+            ft.Row(
+                [
+                    ft.Column([ft.Text("Publicaciones"), ft.Divider(), publications_list_view], expand=3),
+                    ft.VerticalDivider(width=1),
+                    ft.Column([selected_post_title, ft.Divider(), comments_list_view], expand=2)
+                ],
+                expand=True
+            )
+        ],
+        padding=0
+    )
