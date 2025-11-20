@@ -1,34 +1,38 @@
 import praw
 import os
+from pathlib import Path 
 from dotenv import load_dotenv
-# --- CAMBIO: Importamos la DB de Postgres ---
 from .database import SessionLocal, Publication, Comment
 
-load_dotenv() 
+# --- 1. CONFIGURACIÓN DE RUTA SEGURA (.env) ---
+# Estamos en: SentimetrikaITse/Api/reddit_scraper_opt.py
+# Queremos ir a: SentimetrikaITse/.env (Subir 2 niveles)
+env_path = Path(__file__).resolve().parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
-# Configuración
+# Configuración de API
 CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
 CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
-USER_AGENT = "python:SentimentApp:v2.0 (by /u/TuUsuario)"
+USER_AGENT = "python:SentimentApp:v2.0 (by /u/SentimetrikaBot)"
 
 def _mapear_sentimiento_reddit(label_original: str) -> str:
-    """Normaliza las etiquetas del modelo"""
+    """Convierte las etiquetas del modelo (LABEL_0, POSITIVE, etc) a formato estándar"""
     label = label_original.upper()
     if label in ['POSITIVE', 'LABEL_2', 'POS']: return 'positive'
     if label in ['NEGATIVE', 'LABEL_0', 'NEG']: return 'negative'
     return 'neutral'
 
-def run_reddit_scrape_opt(progress_callback, translator, sentiment_analyzer, subreddit_name, post_limit, comment_limit):
+def run_reddit_scraper(progress_callback, search_query, translator=None, sentiment_analyzer=None, limit=10):
     """
-    Versión PostgreSQL optimizada para Reddit.
+    Busca temas en Reddit, analiza sentimientos con IA y guarda en PostgreSQL.
     """
     
-    # 1. Validar Credenciales
+    # Validación de Credenciales
     if not CLIENT_ID or not CLIENT_SECRET:
-        progress_callback("⚠️ ADVERTENCIA: Faltan credenciales de Reddit en el .env")
+        progress_callback("⚠️ Error: Faltan credenciales de Reddit en el archivo .env")
         return 
 
-    progress_callback(f"Conectando a Reddit para analizar r/{subreddit_name}...")
+    progress_callback(f"📡 Conectando a Reddit para buscar: '{search_query}'...")
     
     try:
         reddit = praw.Reddit(
@@ -36,138 +40,123 @@ def run_reddit_scrape_opt(progress_callback, translator, sentiment_analyzer, sub
             client_secret=CLIENT_SECRET, 
             user_agent=USER_AGENT
         )
-        # Prueba de conexión ligera
-        reddit.user.me() 
     except Exception as e:
-        # Si falla user.me() puede ser modo solo lectura, intentamos seguir, 
-        # pero si es error de credenciales fallará abajo.
-        pass
+        progress_callback(f"❌ Error de conexión a Reddit: {e}")
+        return
 
-    # 2. Iniciar Sesión DB
     session = SessionLocal()
     nuevos_comentarios_totales = 0
 
     try:
-        subreddit = reddit.subreddit(subreddit_name)
-        # Usamos .hot() para obtener lo más relevante
-        iterator = subreddit.hot(limit=post_limit)
+        # Buscamos en 'all' para encontrar cualquier subreddit relevante
+        subreddit = reddit.subreddit("all")
         
-        progress_callback(f"Descargando publicaciones de r/{subreddit_name}...")
+        progress_callback(f"🔎 Buscando hilos más relevantes sobre '{search_query}'...")
+        
+        # Buscamos por relevancia
+        iterator = subreddit.search(search_query, limit=limit, sort='relevance')
 
         for i, submission in enumerate(iterator):
             post_id = submission.id
             post_title = submission.title
             
-            progress_callback(f"Procesando Post {i+1}/{post_limit}: {post_title[:40]}...")
+            progress_callback(f"Procesando {i+1}/{limit}: {post_title[:40]}...")
 
-            # --- GESTIÓN PUBLICACIÓN (ORM) ---
+            # --- A. GESTIÓN DE PUBLICACIÓN ---
             existing_pub = session.query(Publication).filter_by(id=str(post_id)).first()
 
             if not existing_pub:
-                # Traducir título si es necesario
-                title_translated = post_title
-                try:
-                    # Asumimos que si está en inglés lo traducimos, 
-                    # pero Reddit no siempre da el idioma. 
-                    # Intentamos traducir directo.
-                    if translator:
+                # Intentamos traducir el título para el dashboard (Opcional)
+                title_trans = post_title
+                if translator:
+                    try:
+                        # Si el título está en inglés y queremos español, o viceversa
                         res = translator(post_title, max_length=512)
-                        if res: title_translated = res[0]['translation_text']
-                except:
-                    pass
+                        if res and 'translation_text' in res[0]:
+                            title_trans = res[0]['translation_text']
+                    except: 
+                        pass # Si falla la traducción, usamos el original
 
                 new_pub = Publication(
                     id=str(post_id),
                     red_social='Reddit',
                     title_original=post_title,
-                    title_translated=title_translated
+                    title_translated=title_trans
                 )
                 session.add(new_pub)
-                session.commit() # Guardar post
-            else:
-                # Ya existe, usamos el título existente
-                pass
-
-            # --- GESTIÓN COMENTARIOS ---
-            submission.comments.replace_more(limit=0) # Evitar árboles de comentarios profundos que ralentizan
-            comments_batch = submission.comments[:comment_limit]
+                session.commit()
             
-            nuevos_comentarios_post = 0
+            # --- B. GESTIÓN DE COMENTARIOS ---
+            submission.comments.replace_more(limit=0) 
+            comments_batch = submission.comments[:15] # Limitamos a 15 comentarios por post para velocidad
+            
+            nuevos_en_post = 0
 
             for comment in comments_batch:
                 try:
-                    if not hasattr(comment, 'body') or not comment.body:
-                        continue
+                    if not hasattr(comment, 'body') or not comment.body: continue
 
-                    comment_text = comment.body
-                    comment_author = str(comment.author) if comment.author else "[deleted]"
+                    c_text = comment.body
+                    c_author = str(comment.author) if comment.author else "[deleted]"
 
-                    # Verificar duplicados
-                    # Buscamos por ID de publicación + Autor + Texto original
-                    existing_comment = session.query(Comment).filter_by(
+                    # Verificar duplicados en DB
+                    exists = session.query(Comment).filter_by(
                         publication_id=str(post_id),
-                        author=comment_author,
-                        text_original=comment_text
+                        text_original=c_text
                     ).first()
 
-                    if existing_comment:
-                        continue
+                    if exists: continue
 
-                    # Procesamiento IA
-                    text_translated = comment_text
-                    text_para_analisis = comment_text
-
-                    # Intento de traducción
+                    # --- C. PROCESAMIENTO DE IA 🧠 ---
+                    text_translated = c_text
+                    
+                    # 1. Traducción (si hay modelo)
                     if translator:
                         try:
-                            trans_res = translator(comment_text, max_length=512)
-                            if trans_res:
-                                text_translated = trans_res[0]['translation_text']
+                            res_t = translator(c_text, max_length=512)
+                            text_translated = res_t[0]['translation_text']
                         except:
-                            pass # Fallback al original
+                            pass 
 
-                    # Análisis de Sentimiento 
-
+                    # 2. Sentimiento (si hay modelo)
+                    sent_label = 'neutral'
+                    sent_score = '0.0'
+                    
                     if sentiment_analyzer:
                         try:
-                            # Analizamos el texto (traducido o no, según convenga al modelo)
-                            # Si tu modelo es multilingüe usa el original, si es en inglés usa el traducido.
-                            # Asumiremos modelo en inglés por defecto:
-                            s_res = sentiment_analyzer(text_translated[:512])[0]
-                            sentiment_label = _mapear_sentimiento_reddit(s_res['label'])
-                            sentiment_score = str(round(s_res.get('score', 0.0), 4))
-                        except:
-                            sentiment_label = 'neutral'
-                            sentiment_score = '0.0'
-                    else:
-                        sentiment_label = 'neutral'
-                        sentiment_score = '0.0'
+                            # Analizamos el texto (usamos el traducido si el modelo lo requiere)
+                            res_s = sentiment_analyzer(text_translated[:512])[0]
+                            sent_label = _mapear_sentimiento_reddit(res_s['label'])
+                            sent_score = str(round(res_s.get('score', 0.0), 4))
+                        except Exception as e_ia:
+                            print(f"Error IA en comentario: {e_ia}")
 
-                    # Crear objeto
+                    # Guardar en DB
                     new_comment = Comment(
                         publication_id=str(post_id),
-                        author=comment_author,
-                        text_original=comment_text,
-                        text_translated=text_translated,
-                        sentiment_label=sentiment_label,
-                        sentiment_score=sentiment_score
+                        author=c_author,
+                        text_original=c_text,
+                        text_translated=text_translated, 
+                        sentiment_label=sent_label, # ¡Aquí va el sentimiento real!
+                        sentiment_score=sent_score  # ¡Aquí va el score real!
                     )
                     session.add(new_comment)
-                    nuevos_comentarios_post += 1
+                    nuevos_en_post += 1
 
-                except Exception as e_comm:
-                    # Error en un comentario no detiene el post
+                except Exception:
                     continue
             
-            # Commit por publicación
-            if nuevos_comentarios_post > 0:
+            if nuevos_en_post > 0:
                 session.commit()
-                nuevos_comentarios_totales += nuevos_comentarios_post
-                progress_callback(f"  └ +{nuevos_comentarios_post} comentarios guardados.")
+                nuevos_comentarios_totales += nuevos_en_post
+                progress_callback(f"   └ 💾 Guardados {nuevos_en_post} comentarios analizados.")
 
     except Exception as e:
         session.rollback()
-        progress_callback(f"❌ Error general en Reddit Scraper: {e}")
+        progress_callback(f"❌ Error durante el scraping: {e}")
     finally:
         session.close()
-        progress_callback(f"\n--- ✅ Pipeline de Reddit finalizado. Total nuevos: {nuevos_comentarios_totales} ---")
+        if nuevos_comentarios_totales > 0:
+            progress_callback(f"✨ Éxito: Se analizaron y guardaron {nuevos_comentarios_totales} comentarios nuevos.")
+        else:
+            progress_callback("💤 Búsqueda terminada. No se encontraron comentarios nuevos para guardar.")

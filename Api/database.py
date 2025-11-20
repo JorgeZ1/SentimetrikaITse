@@ -23,8 +23,8 @@ try:
     # --- AQUÍ ESTÁ EL ARREGLO (connect_args) ---
     # Forzamos a PostgreSQL a usar UTF-8 para el cliente, ignorando la configuración de Windows
     engine = create_engine(
-        DATABASE_URL, 
-        connect_args={"options": "-c client_encoding=utf8"}
+    DATABASE_URL, 
+    connect_args={"options": "-c client_encoding=utf8"}
     )
     
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

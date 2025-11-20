@@ -1,145 +1,159 @@
 import flet as ft
-from flet import Icons, Colors 
+from flet import Icons, Colors, FontWeight, TextThemeStyle, BoxShadow, Offset
 
 def create_social_select_view(page: ft.Page) -> ft.View:
 
-    # --- 1. Función corregida: Crear SnackBar explícitamente ---
+    # --- 1. LÓGICA DE NAVEGACIÓN ---
     def handle_selection(e):
         platform = e.control.data
         
-        # Navegación
-        if platform == "reddit":
-            page.go("/dashboard/reddit")
-        elif platform == "mastodon":
-            page.go("/dashboard/mastodon")
-        elif platform == "facebook":
-            page.go("/dashboard/facebook")
-        else:
-            page.go("/login") 
-        
-        # CORRECCIÓN: Creamos y asignamos el SnackBar directamente
+        # Feedback visual
         page.snack_bar = ft.SnackBar(
-            content=ft.Text(f"Cargando dashboard de: {platform.capitalize()}..."),
-            bgcolor=Colors.TEAL_700
+            content=ft.Row([
+                ft.Icon(Icons.ROCKET_LAUNCH, color=Colors.WHITE),
+                ft.Text(f"Entrando a {platform.capitalize()}...", weight=FontWeight.BOLD)
+            ], spacing=10),
+            bgcolor=Colors.BLUE_GREY_900,
+            duration=2000
         )
         page.snack_bar.open = True
         page.update()
 
-    # --- Componente de tarjeta (Sin cambios) ---
-    def create_platform_card(title, icon, color, platform_key):
-        return ft.Card(
-            content=ft.Container(
-                content=ft.Column(
-                    [
-                        ft.Icon(icon, size=50, color=color), 
-                        ft.Text(title, size=18, weight=ft.FontWeight.BOLD),
-                        ft.Text("Analizar datos y sentimientos", size=12, color=Colors.ON_SURFACE_VARIANT), 
-                    ],
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    spacing=10
-                ),
-                width=220,
-                height=180,
-                alignment=ft.alignment.center,
-                on_click=handle_selection,
-                data=platform_key, 
-                ink=True,
-                padding=ft.padding.all(20)
+        # Navegación
+        if platform == "reddit": page.go("/dashboard/reddit")
+        elif platform == "mastodon": page.go("/dashboard/mastodon")
+        elif platform == "facebook": page.go("/dashboard/facebook")
+        else: page.go("/login") 
+
+    # --- 2. COMPONENTE: TARJETA INTERACTIVA (HOVER) ---
+    def create_hover_card(title, icon, color, platform_key, description):
+        
+        def on_hover(e):
+            is_hover = e.data == "true"
+            e.control.scale = 1.05 if is_hover else 1.0
+            e.control.shadow = BoxShadow(
+                blur_radius=20 if is_hover else 5,
+                color=color if is_hover else Colors.BLACK12,
+                offset=Offset(0, 10 if is_hover else 2)
+            )
+            e.control.update()
+
+        return ft.Container(
+            content=ft.Column(
+                [
+                    ft.Icon(icon, size=60, color=color),
+                    ft.Text(title, size=20, weight=FontWeight.BOLD, color=Colors.BLUE_GREY_900),
+                    ft.Text(description, size=12, color=Colors.GREY_500, text_align=ft.TextAlign.CENTER),
+                    ft.Container(
+                        content=ft.Text("VER DASHBOARD", size=10, weight=FontWeight.BOLD, color=Colors.WHITE),
+                        bgcolor=color,
+                        padding=ft.padding.symmetric(horizontal=15, vertical=8),
+                        border_radius=20,
+                        margin=ft.margin.only(top=10)
+                    )
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=5
             ),
-            elevation=8,
-            width=240,
-            height=200,
+            width=260,
+            height=280,
+            bgcolor=Colors.WHITE,
+            border_radius=20,
+            padding=30,
+            
+            # Animaciones
+            scale=1, 
+            animate_scale=ft.Animation(200, ft.AnimationCurve.EASE_OUT),
+            shadow=BoxShadow(blur_radius=5, color=Colors.BLACK12, offset=Offset(0, 2)),
+            animate=ft.Animation(200, ft.AnimationCurve.EASE_OUT),
+            
+            # Eventos
+            on_click=handle_selection,
+            on_hover=on_hover,
+            data=platform_key
         )
 
-    # --- 2. Función Scraper corregida ---
-    def run_scrapers_and_show_log(e):
-        if page.data and "run_all_scrapers_func" in page.data:
-            run_func = page.data["run_all_scrapers_func"]
-            run_func(e) 
-            
-            # CORRECCIÓN: Creamos y asignamos el SnackBar directamente
-            page.snack_bar = ft.SnackBar(
-                content=ft.Text("Iniciando actualización en segundo plano... (Revisa la terminal)"),
-                bgcolor=Colors.TEAL_700
-            )
-            page.snack_bar.open = True
-            page.update()
-            
-        else:
-            print("Error: La función 'run_all_scrapers_func' no está en 'page.data'.")
-            # CORRECCIÓN: SnackBar de error
-            page.snack_bar = ft.SnackBar(
-                content=ft.Text("¡Error! No se pudo iniciar el scrape. Reinicia la app."),
-                bgcolor=Colors.RED_700
-            )
-            page.snack_bar.open = True
-            page.update()
-
-    # --- Layout de la Vista ---
+    # --- LAYOUT PRINCIPAL ---
     return ft.View(
         "/social_select",
         [
-            ft.AppBar(title=ft.Text("🌐 Selecciona tu Fuente de Datos"), bgcolor=Colors.TEAL_700),
             ft.Container(
+                image=ft.DecorationImage(
+                    src="assets/login_bg.png", 
+                    fit=ft.ImageFit.COVER,
+                    opacity=0.05
+                ),
+                expand=True,
+                bgcolor=Colors.BLUE_GREY_50,
                 content=ft.Column(
                     [
-                        ft.Text("¿Qué red social deseas analizar hoy?", size=32, weight=ft.FontWeight.BOLD),
-                        ft.Text("Cada selección te llevará a un dashboard individual.", italic=True, color=Colors.GREY_500),
-                        ft.Container(height=40),
-                        
-                        ft.Row(
-                            [
-                                create_platform_card(
-                                    "Reddit", 
-                                    Icons.REDDIT, 
-                                    Colors.ORANGE_ACCENT_700, 
-                                    "reddit"
-                                ),
-                                create_platform_card(
-                                    "Mastodon", 
-                                    Icons.HIDE_SOURCE, 
-                                    Colors.PURPLE_500,
-                                    "mastodon"
-                                ),
-                                create_platform_card(
-                                    "Facebook", 
-                                    Icons.FACEBOOK, 
-                                    Colors.BLUE_800,
-                                    "facebook"
-                                ),
-                            ],
-                            alignment=ft.MainAxisAlignment.CENTER,
-                            spacing=50
+                        # Header
+                        ft.Container(
+                            content=ft.Row([
+                                ft.Icon(Icons.ANALYTICS, color=Colors.TEAL_700, size=30),
+                                ft.Text("Sentimetrika Hub", size=20, weight=FontWeight.BOLD, color=Colors.BLUE_GREY_800),
+                                ft.Container(expand=True),
+                                ft.IconButton(Icons.LOGOUT, tooltip="Cerrar Sesión", icon_color=Colors.RED_400, on_click=lambda e: page.go("/login"))
+                            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                            padding=ft.padding.symmetric(horizontal=40, vertical=20)
+                        ),
+
+                        # Contenido Central
+                        ft.Container(
+                            content=ft.Column(
+                                [
+                                    ft.Text("Selecciona una Fuente de Datos", style=TextThemeStyle.HEADLINE_MEDIUM, weight=FontWeight.BOLD, color=Colors.BLUE_GREY_900),
+                                    ft.Text("Analiza sentimientos y tendencias en tiempo real", size=16, color=Colors.BLUE_GREY_400),
+                                    
+                                    ft.Container(height=40),
+                                    
+                                    ft.Row(
+                                        [
+                                            create_hover_card(
+                                                "Facebook", 
+                                                Icons.FACEBOOK, 
+                                                Colors.BLUE_800, 
+                                                "facebook",
+                                                "Páginas, Comentarios y Reacciones"
+                                            ),
+                                            create_hover_card(
+                                                "Reddit", 
+                                                Icons.REDDIT, 
+                                                Colors.DEEP_ORANGE_ACCENT_700, 
+                                                "reddit",
+                                                "Hilos, Discusiones y Karmas"
+                                            ),
+                                            create_hover_card(
+                                                "Mastodon", 
+                                                Icons.HUB, 
+                                                Colors.PURPLE_500, 
+                                                "mastodon",
+                                                "Toots, Instancias y Fediverso"
+                                            ),
+                                        ],
+                                        alignment=ft.MainAxisAlignment.CENTER,
+                                        spacing=30,
+                                        wrap=True
+                                    ),
+                                    
+                                    ft.Container(height=40), # Reducido este espacio
+                                ],
+                                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                            ),
+                            expand=True,
+                            alignment=ft.alignment.center
                         ),
                         
-                        ft.Container(height=50),
-                        
-                        ft.Row(
-                            [
-                                ft.TextButton(
-                                    "Volver al Login",
-                                    icon=Icons.ARROW_BACK, 
-                                    on_click=lambda e: page.go("/login")
-                                ),
-                                ft.ElevatedButton(
-                                    "Actualizar Datos",
-                                    icon=Icons.REFRESH,
-                                    on_click=run_scrapers_and_show_log,
-                                    bgcolor=Colors.TEAL_700,
-                                    color=Colors.WHITE,       
-                                )
-                            ],
-                            alignment=ft.MainAxisAlignment.CENTER,
-                            spacing=20 
+                        # Footer
+                        ft.Container(
+                            content=ft.Text("© 2025 Sentimetrika Project - Powered by Python & Flet", size=10, color=Colors.GREY_400),
+                            padding=20,
+                            alignment=ft.alignment.center
                         )
-                    ],
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    spacing=20
-                ),
-                padding=50
+                    ]
+                )
             )
         ],
-        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-        vertical_alignment=ft.MainAxisAlignment.CENTER,
+        padding=0
     )

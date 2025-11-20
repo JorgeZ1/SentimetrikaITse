@@ -118,7 +118,7 @@ def create_dashboard_view(page: ft.Page):
         controls=[
             ft.Column(
                 [
-                    # --- ¡AQUÍ ESTÁ EL CAMBIO! ---
+                    
                     ft.Row(
                         [
                             # 1. El nuevo botón de retroceso
@@ -136,7 +136,7 @@ def create_dashboard_view(page: ft.Page):
                         # Alinea el botón y el texto
                         vertical_alignment=ft.CrossAxisAlignment.CENTER 
                     ),
-                    # --- FIN DEL CAMBIO ---
+                   
                     
                     tabs_control, 
                 ],

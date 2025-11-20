@@ -1,204 +1,222 @@
+from mastodon import Mastodon, MastodonError
 import os
-import re
-import pathlib
-from mastodon import Mastodon
-# --- CAMBIO: Importamos la DB de Postgres ---
+from pathlib import Path
+from dotenv import load_dotenv
 from .database import SessionLocal, Publication, Comment
+import re
 
-def _limpiar_html(html_content):
-    """Elimina etiquetas HTML simples del contenido de un toot."""
-    if not html_content:
-        return ""
-    cleanr = re.compile('<.*?>')
-    cleantext = re.sub(cleanr, '', html_content)
-    cleantext = cleantext.replace("</p>", " ").replace("<br>", " ")
-    return " ".join(cleantext.split())
+# --- CONFIGURACIÓN GPS ---
+current_dir = Path(__file__).resolve().parent
+env_path = current_dir.parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
-def _conectar_api_mastodon(progress_callback):
-    """Conecta a la API de Mastodon usando el token."""
-    TOKEN_FILE = pathlib.Path(__file__).parent / "user_token.secret"
-    INSTANCE_URL = "https://mastodon.social"
+# RUTA AL ARCHIVO TXT
+IDS_FILE_PATH = current_dir / 'mastodon_ids.txt'
 
-    if not os.path.exists(TOKEN_FILE):
-        progress_callback(f"❌ Error: {TOKEN_FILE} no encontrado.")
-        return None
+API_BASE_URL = os.getenv("MASTODON_API_BASE_URL", "https://mastodon.social")
+ACCESS_TOKEN = os.getenv("MASTODON_ACCESS_TOKEN")
+
+def _limpiar_html(texto_html):
+    if not texto_html: return ""
     try:
-        mastodon = Mastodon(
-            access_token=TOKEN_FILE.read_text().strip(),
-            api_base_url=INSTANCE_URL
-        )
-        mastodon.account_verify_credentials()
-        progress_callback("✅ Conexión exitosa a Mastodon.")
-        return mastodon
-    except Exception as e:
-        progress_callback(f"❌ Error al conectar a Mastodon: {e}")
-        progress_callback(f"   Asegúrate de que 'user_token.secret' contenga tu token.")
-        return None
+        clean = re.compile('<.*?>')
+        return re.sub(clean, '', str(texto_html))
+    except:
+        return ""
 
-def _leer_ids_de_archivo(progress_callback):
-    """Lee los IDs desde el archivo de texto."""
-    INPUT_FILE = pathlib.Path(__file__).parent / "mastodon_ids.txt"
-    if not os.path.exists(INPUT_FILE):
-        progress_callback(f"❌ Error: No se encuentra el archivo de IDs: {INPUT_FILE}")
-        return []
-    with open(INPUT_FILE, 'r') as f:
-        ids = [line.strip() for line in f if line.strip()]
-    progress_callback(f"Encontrados {len(ids)} IDs en {INPUT_FILE}")
-    return ids
+def _extraer_id_seguro(texto):
+    """
+    Validación estricta. Si no es un ID válido, devuelve None.
+    """
+    if not texto: return None
+    texto = str(texto).strip()
+    
+    # 1. Si es basura corta o texto, ignorar (ej: "sq", "hola")
+    # Los IDs de Mastodon suelen ser largos (más de 10 dígitos) o numéricos
+    if not texto.isdigit(): 
+        # Intentamos ver si es una URL
+        try:
+            match = re.search(r'/(\d+)$', texto)
+            if match: return match.group(1)
+        except: pass
+        return None 
+    
+    # 2. Si es numérico, es válido
+    return texto
 
 def _mapear_sentimiento(label_original: str) -> str:
-    """Convierte las etiquetas del modelo a un formato estándar."""
+    if not label_original: return 'neutral'
     label = label_original.upper()
     if label in ['POSITIVE', 'LABEL_2', 'POS']: return 'positive'
     if label in ['NEGATIVE', 'LABEL_0', 'NEG']: return 'negative'
     return 'neutral'
 
-def run_mastodon_scrape_opt(progress_callback, translator, sentiment_analyzer):
+def run_mastodon_scraper(progress_callback, lista_ids_nuevos=None, translator=None, sentiment_analyzer=None):
     """
-    Versión PostgreSQL optimizada para Mastodon.
+    Scraper blindado: 
+    1. Filtra IDs inválidos ("sq").
+    2. Salta IDs que ya existen en la DB (Optimización).
+    3. Usa Timeouts para no congelar la app.
     """
     
-    # 1. Conexión API
-    mastodon = _conectar_api_mastodon(progress_callback)
-    if not mastodon:
-        progress_callback("Fallo en la inicialización de Mastodon. Abortando.")
-        return
-
-    # 2. Leer IDs
-    post_ids = _leer_ids_de_archivo(progress_callback)
-    if not post_ids:
-        progress_callback("No hay IDs para procesar. Saliendo.")
-        return
-
-    # 3. Iniciar Sesión DB
-    session = SessionLocal()
-    nuevos_comentarios_totales = 0
-
-    progress_callback(f"\n--- Iniciando pipeline de Mastodon para {len(post_ids)} publicaciones ---")
-
-    try:
-        for post_id in post_ids:
-            progress_callback(f"Procesando publicación: {post_id}")
-            try:
-                # Obtener datos de la API
-                post = mastodon.status(post_id)
-                post_content_orig = _limpiar_html(post['content'])
-                post_lang = post.get('language', 'und')
-                
-                # Preparar Título
-                title_original = post_content_orig[:200] # Cortamos para el título si es muy largo
-                title_translated = title_original
-
-                # Traducción del Post (Título)
-                if post_lang == 'en' and translator:
-                    try:
-                        trans_res = translator(title_original, max_length=512)
-                        if trans_res:
-                            title_translated = trans_res[0]['translation_text']
-                    except:
-                        pass # Fallback
-                elif post_lang != 'es':
-                    title_translated = f"[{post_lang}] {title_original}"
-
-                # --- GESTIÓN DE PUBLICACIÓN (ORM) ---
-                # Verificar si existe
-                existing_pub = session.query(Publication).filter_by(id=str(post_id)).first()
-                
-                if not existing_pub:
-                    new_pub = Publication(
-                        id=str(post_id),
-                        red_social='Mastodon',
-                        title_original=title_original,
-                        title_translated=title_translated
-                    )
-                    session.add(new_pub)
-                    session.commit() # Guardar publicación
+    # --- PASO 1: GESTIÓN DEL ARCHIVO TXT ---
+    if lista_ids_nuevos:
+        try:
+            ids_existentes = set()
+            if IDS_FILE_PATH.exists():
+                with open(IDS_FILE_PATH, 'r', encoding='utf-8', errors='ignore') as f:
+                    ids_existentes = set(line.strip() for line in f if line.strip())
+            
+            ids_validos_nuevos = []
+            # FILTRADO ESTRICTO
+            for raw_id in lista_ids_nuevos:
+                clean_id = _extraer_id_seguro(raw_id) 
+                if clean_id:
+                    if clean_id not in ids_existentes:
+                        ids_validos_nuevos.append(clean_id)
+                        ids_existentes.add(clean_id)
                 else:
-                    # Opcional: Actualizar si ya existe
-                    pass
+                    print(f"Ignorando ID inválido: {raw_id}") # Debug interno
 
-                # --- GESTIÓN DE COMENTARIOS ---
-                context = mastodon.status_context(post_id)
-                comments = context['descendants']
-                
-                nuevos_comentarios_post = 0
-                
-                if not comments:
-                    progress_callback(f"  └ Publicación {post_id}: No hay comentarios.")
+            if ids_validos_nuevos:
+                with open(IDS_FILE_PATH, 'a', encoding='utf-8') as f:
+                    if IDS_FILE_PATH.exists() and IDS_FILE_PATH.stat().st_size > 0:
+                        f.write("\n")
+                    f.write("\n".join(ids_validos_nuevos))
+                progress_callback(f"📝 {len(ids_validos_nuevos)} IDs válidos agregados.")
+            elif len(lista_ids_nuevos) > 0:
+                progress_callback("⚠️ IDs inválidos ignorados (basura detectada).")
+
+        except Exception as e:
+            progress_callback(f"⚠️ Error archivo txt: {e}")
+
+    # --- PASO 2: LEER LA LISTA MAESTRA ---
+    post_ids = []
+    if IDS_FILE_PATH.exists():
+        try:
+            with open(IDS_FILE_PATH, 'r', encoding='utf-8', errors='ignore') as f:
+                for line in f:
+                    clean = _extraer_id_seguro(line) # Validamos también al leer
+                    if clean: post_ids.append(clean)
+        except Exception: pass
+    
+    if not post_ids:
+        progress_callback("⚠️ Archivo vacío. Agrega IDs válidos.")
+        return
+
+    # --- PASO 3: CONEXIÓN ---
+    progress_callback(f"📡 Conectando ({len(post_ids)} IDs)...")
+    
+    try:
+        mastodon = Mastodon(
+            access_token=ACCESS_TOKEN, 
+            api_base_url=API_BASE_URL,
+            request_timeout=10 # Timeout para no congelar
+        )
+    except Exception as e:
+        progress_callback(f"❌ Error conexión: {e}")
+        return
+
+    session = SessionLocal()
+    nuevos_totales = 0
+    
+    try:
+        total = len(post_ids)
+        for i, pid in enumerate(post_ids):
+            try:
+                # --- OPTIMIZACIÓN: VERIFICAR DB PRIMERO ---
+                # Si ya existe en la base de datos, no gastamos tiempo en internet
+                exists_in_db = session.query(Publication).filter_by(id=str(pid)).first()
+                if exists_in_db:
+                    # Opcional: Comentar el print para menos ruido
+                    # progress_callback(f"⏩ ({i+1}/{total}) ID {pid} ya existe. Saltando...")
                     continue
 
-                for comment in comments:
-                    try:
-                        comment_text_orig = _limpiar_html(comment['content'])
-                        comment_lang = comment.get('language', 'und')
-                        comment_author = comment['account']['username']
-                        
-                        if not comment_text_orig:
-                            continue
+                progress_callback(f"🔍 ({i+1}/{total}) Analizando ID: {pid}...")
 
-                        # Verificar duplicados en DB (Buscamos por Post + Autor + Texto)
-                        # Esto evita que se repitan si corres el script 2 veces
-                        existing_comment = session.query(Comment).filter_by(
-                            publication_id=str(post_id),
-                            author=comment_author,
-                            text_original=comment_text_orig
-                        ).first()
+                # Obtener Toot
+                try:
+                    toot = mastodon.status(pid)
+                except Exception:
+                    # Si falla (404, privado, etc), ignoramos y seguimos
+                    continue
 
-                        if existing_comment:
-                            continue
-
-                        # Lógica de traducción
-                        text_translated = comment_text_orig
-                        text_para_analisis = comment_text_orig
-
-                        if comment_lang == 'es':
-                            pass
-                        elif comment_lang == 'en' and translator:
-                            try:
-                                trans_res = translator(comment_text_orig, max_length=512)
-                                if trans_res:
-                                    text_translated = trans_res[0]['translation_text']
-                                    text_para_analisis = comment_text_orig # Analizamos el original en inglés si el modelo lo soporta, o el traducido
-                            except:
-                                pass
-                        
-                        # Análisis de Sentimiento
-                        if sentiment_analyzer:
-                            sentiment_result = sentiment_analyzer(text_para_analisis[:512])[0]
-                            sentiment_label = _mapear_sentimiento(sentiment_result['label'])
-                            sentiment_score = str(round(sentiment_result.get('score', 0.0), 4))
-                        else:
-                            sentiment_label = 'neutral'
-                            sentiment_score = '0.0'
-                        
-                        # Crear Comentario
-                        new_comment = Comment(
-                            publication_id=str(post_id),
-                            author=comment_author,
-                            text_original=comment_text_orig,
-                            text_translated=text_translated,
-                            sentiment_label=sentiment_label,
-                            sentiment_score=sentiment_score
-                        )
-                        session.add(new_comment)
-                        nuevos_comentarios_post += 1
-
-                    except Exception as e_comment:
-                        # Errores puntuales en un comentario no detienen el proceso
-                        pass
-
-                if nuevos_comentarios_post > 0:
-                    session.commit()
-                    nuevos_comentarios_totales += nuevos_comentarios_post
-                    progress_callback(f"  └ +{nuevos_comentarios_post} comentarios guardados.")
-
-            except Exception as e_post:
-                session.rollback()
-                progress_callback(f"\nError procesando publicación {post_id}: {e_post}")
+                content_clean = _limpiar_html(toot.content)
                 
-    except Exception as e_main:
-        progress_callback(f"Error general en pipeline Mastodon: {e_main}")
-        
+                # Guardar Publicación (Si pasamos el filtro de arriba, es nueva)
+                title_trans = content_clean
+                if translator:
+                    try:
+                        res = translator(content_clean, max_length=512)
+                        title_trans = res[0]['translation_text']
+                    except: pass
+
+                new_pub = Publication(
+                    id=str(pid),
+                    red_social='Mastodon',
+                    title_original=content_clean[:250],
+                    title_translated=title_trans[:250]
+                )
+                session.add(new_pub)
+                session.commit()
+
+                # Guardar Comentarios
+                try:
+                    context = mastodon.status_context(pid)
+                    replies = context['descendants'][:10]
+                except: replies = []
+                
+                nuevos_en_post = 0
+                for reply in replies:
+                    try:
+                        r_content = _limpiar_html(reply.content)
+                        if not r_content: continue
+                        
+                        # Verificar duplicado de comentario
+                        exists_c = session.query(Comment).filter_by(publication_id=str(pid), text_original=r_content).first()
+                        if exists_c: continue
+
+                        # IA
+                        text_trans = r_content
+                        s_label = 'neutral'
+                        s_score = '0.0'
+                        if translator:
+                            try: text_trans = translator(r_content, max_length=512)[0]['translation_text']
+                            except: pass
+                        if sentiment_analyzer:
+                            try:
+                                res = sentiment_analyzer(text_trans[:512])[0]
+                                s_label = _mapear_sentimiento(res['label'])
+                                s_score = str(round(res.get('score', 0), 4))
+                            except: pass
+
+                        new_c = Comment(
+                            publication_id=str(pid),
+                            author=str(reply.account.username),
+                            text_original=r_content,
+                            text_translated=text_trans,
+                            sentiment_label=s_label,
+                            sentiment_score=s_score
+                        )
+                        session.add(new_c)
+                        nuevos_en_post += 1
+                    except: continue
+
+                if nuevos_en_post > 0:
+                    session.commit()
+                    nuevos_totales += nuevos_en_post
+                    progress_callback(f"   └ 💾 +{nuevos_en_post} respuestas.")
+            
+            except Exception as e_id:
+                print(f"Error ID {pid}: {e_id}")
+                continue
+
+    except Exception as e:
+        session.rollback()
+        progress_callback(f"❌ Error crítico: {e}")
     finally:
-        session.close() # Cerrar conexión
-        progress_callback(f"\n--- ✅ Pipeline de Mastodon finalizado. Total nuevos: {nuevos_comentarios_totales} ---")
+        session.close()
+        if nuevos_totales > 0:
+            progress_callback(f"✨ Éxito: {nuevos_totales} nuevos.")
+        else:
+            progress_callback("💤 Terminado (No hubo datos nuevos).")

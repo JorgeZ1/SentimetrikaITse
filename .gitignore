@@ -1,9 +1,10 @@
 # Folders to ignore
-__pycache__/
 venv/
-*.pyc
-.vscode/
-
+.env
+__pycache__/
 # OS generated files
 .DS_Store
 .env
+venv/
+.env
+__pycache__/
