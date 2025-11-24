@@ -1,28 +1,30 @@
 import flet as ft
 from sqlalchemy import func
+from sqlalchemy.orm.session import Session
 from collections import Counter
 from flet import Icons, Colors
 from Api.database import SessionLocal, Publication, Comment
+from typing import List, Dict, Any
 
-def get_impact_icon(impact: str):
+def get_impact_icon(impact: str) -> ft.Icon:
     """
     Devuelve un icono de Flet basado en la cadena de impacto.
     Adaptado para la versión de Flet del usuario.
     """
-    icons = {
+    icons: Dict[str, ft.Icon] = {
         "positive": ft.Icon(name=Icons.SENTIMENT_SATISFIED, color=Colors.GREEN),
         "negative": ft.Icon(name=Icons.SENTIMENT_DISSATISFIED, color=Colors.RED),
         "neutral": ft.Icon(name=Icons.SENTIMENT_NEUTRAL, color=Colors.GREY),
     }
     return icons.get(impact.lower(), ft.Icon(name=Icons.HELP))
 
-def procesar_y_agrupar_publicaciones():
+def procesar_y_agrupar_publicaciones() -> List[Dict[str, Any]]:
     """
     Obtiene TODAS las publicaciones desde PostgreSQL y calcula el impacto
     de forma eficiente usando una única consulta.
     """
-    session = SessionLocal()
-    lista_procesada = []
+    session: Session = SessionLocal()
+    lista_procesada: List[Dict[str, Any]] = []
 
     try:
         # Subconsulta para contar los sentimientos por publicación

@@ -2,31 +2,33 @@ import flet as ft
 from Api.database import SessionLocal, Publication, Comment
 from flet import Colors
 
+from typing import Dict, List, Any
+
 # --- Paleta de colores (sin cambios) ---
-BACKGROUND_COLOR = "#1f2630"
-CARD_COLOR = "#2c3440"
-PRIMARY_TEXT_COLOR = ft.Colors.WHITE
-SECONDARY_TEXT_COLOR = ft.Colors.GREY_400
-ACCENT_COLOR = "#3399ff"
+BACKGROUND_COLOR: str = "#1f2630"
+CARD_COLOR: str = "#2c3440"
+PRIMARY_TEXT_COLOR: str = ft.Colors.WHITE
+SECONDARY_TEXT_COLOR: str = ft.Colors.GREY_400
+ACCENT_COLOR: str = "#3399ff"
 
 # --- AÑADIDO: Función para obtener ícono y texto del sentimiento ---
-def get_sentiment_display(sentiment_data: dict):
+def get_sentiment_display(sentiment_data: Dict[str, Any]) -> ft.Row:
     """Devuelve un ft.Row con un ícono y texto para el sentimiento."""
-    etiqueta = sentiment_data.get("etiqueta", "NEUTRAL").upper()
+    etiqueta: str = sentiment_data.get("etiqueta", "NEUTRAL").upper()
     
-    colores = {
+    colores: Dict[str, str] = {
         "POSITIVE": ft.colors.GREEN,
         "NEGATIVE": ft.colors.RED,
         "NEUTRAL": ft.colors.GREY
     }
-    iconos = {
+    iconos: Dict[str, str] = {
         "POSITIVE": ft.Icons.THUMB_UP,
         "NEGATIVE": ft.Icons.THUMB_DOWN,
         "NEUTRAL": ft.Icons.CIRCLE_OUTLINED
     }
     
-    color = colores.get(etiqueta, ft.colors.GREY)
-    icono = iconos.get(etiqueta, ft.Icons.HELP)
+    color: str = colores.get(etiqueta, ft.colors.GREY)
+    icono: str = iconos.get(etiqueta, ft.Icons.HELP)
     
     return ft.Row(
         [
@@ -37,10 +39,10 @@ def get_sentiment_display(sentiment_data: dict):
     )
 
 # --- Vista de comentarios (CON MODIFICACIONES) ---
-def create_comments_view(page: ft.Page, pub_id: str):
+def create_comments_view(page: ft.Page, pub_id: str) -> ft.View:
     session = SessionLocal()
-    publicacion_actual = None
-    comentarios_actuales = []
+    publicacion_actual: Publication = None
+    comentarios_actuales: List[Comment] = []
     
     try:
         # 1. Obtener los datos de la publicación específica desde PostgreSQL
@@ -55,11 +57,11 @@ def create_comments_view(page: ft.Page, pub_id: str):
     finally:
         session.close()
 
-    lista_de_comentarios = []
-    titulo_publicacion = ft.Text("Publicación no encontrada", style=ft.TextStyle(color=ft.colors.RED, text_align=ft.TextAlign.CENTER))
+    lista_de_comentarios: List[ft.Container] = []
+    titulo_publicacion: ft.Text = ft.Text("Publicación no encontrada", style=ft.TextStyle(color=ft.colors.RED, text_align=ft.TextAlign.CENTER))
 
     if publicacion_actual:
-        titulo_texto = publicacion_actual.title_translated or publicacion_actual.title_original or "Título no encontrado"
+        titulo_texto: str = publicacion_actual.title_translated or publicacion_actual.title_original or "Título no encontrado"
         titulo_publicacion = ft.Text(
             titulo_texto,
             style=ft.TextStyle(size=20, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE), 
@@ -67,9 +69,9 @@ def create_comments_view(page: ft.Page, pub_id: str):
         )
 
         for comentario in comentarios_actuales:
-            sentiment_dict = {"etiqueta": comentario.sentiment_label}
+            sentiment_dict: Dict[str, str] = {"etiqueta": comentario.sentiment_label}
 
-            tarjeta_comentario = ft.Container(
+            tarjeta_comentario: ft.Container = ft.Container(
                 content=ft.Column([
                     ft.Row(
                         [

@@ -2,7 +2,7 @@
 import flet as ft
 import re
 from mi_dashboard.auth import register_user
-from mi_dashboard.theme import TEXT_DARK, PRIMARY_COLOR, ACCENT_MAGENTA
+from mi_dashboard.theme import TEXT_PRIMARY, PRIMARY, ACCENT, TEXT_ON_PRIMARY
 
 def create_register_view(page: ft.Page):
     """
@@ -15,9 +15,9 @@ def create_register_view(page: ft.Page):
         label="Correo electrónico",
         width=300,
         border_radius=8,
-        border_color=PRIMARY_COLOR,
+        border_color=PRIMARY,
         bgcolor=ft.Colors.WHITE,
-        color=ft.Colors.BLACK,  # 👈 Color del texto que se escribe
+        color=ft.Colors.BLACK,
     )
     password = ft.TextField(
         label="Contraseña",
@@ -25,9 +25,9 @@ def create_register_view(page: ft.Page):
         can_reveal_password=True,
         width=300,
         border_radius=8,
-        border_color=PRIMARY_COLOR,
+        border_color=PRIMARY,
         bgcolor=ft.Colors.WHITE,
-        color=ft.Colors.BLACK,  # 👈 Color del texto que se escribe
+        color=ft.Colors.BLACK,
     )
     confirm_password = ft.TextField(
         label="Confirmar contraseña",
@@ -35,11 +35,11 @@ def create_register_view(page: ft.Page):
         can_reveal_password=True,
         width=300,
         border_radius=8,
-        border_color=PRIMARY_COLOR,
+        border_color=PRIMARY,
         bgcolor=ft.Colors.WHITE,
-        color=ft.Colors.BLACK,  # 👈 Color del texto que se escribe
+        color=ft.Colors.BLACK,
     )
-    error_text = ft.Text("", style=ft.TextStyle(color=ACCENT_MAGENTA))
+    error_text = ft.Text("", style=ft.TextStyle(color=ACCENT))
     
     # ---------- Validaciones y Lógica ----------
     def is_valid_email(email_value: str) -> bool:
@@ -94,7 +94,7 @@ def create_register_view(page: ft.Page):
                         [
                             ft.Text(
                                 "Crea tu cuenta",
-                                style=ft.TextStyle(size=28, weight=ft.FontWeight.BOLD, color=TEXT_DARK),
+                                style=ft.TextStyle(size=28, weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY),
                             ),
                             email,
                             password,
@@ -103,8 +103,8 @@ def create_register_view(page: ft.Page):
                             ft.ElevatedButton(
                                 "Registrarme",
                                 on_click=register_action,
-                                bgcolor=PRIMARY_COLOR,
-                                color=ft.Colors.WHITE,
+                                bgcolor=PRIMARY,
+                                color=TEXT_ON_PRIMARY,
                                 height=45,
                                 width=300,
                                 style=ft.ButtonStyle(
@@ -114,7 +114,7 @@ def create_register_view(page: ft.Page):
                             ft.TextButton(
                                 "Ya tengo cuenta, iniciar sesión",
                                 on_click=lambda _: page.go("/login"),
-                                style=ft.ButtonStyle(color=PRIMARY_COLOR)
+                                style=ft.ButtonStyle(color=PRIMARY)
                             ),
                         ],
                         spacing=20,

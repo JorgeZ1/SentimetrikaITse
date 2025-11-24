@@ -2,15 +2,16 @@ import flet as ft
 from mi_dashboard.utils import procesar_y_agrupar_publicaciones, get_impact_icon
 from flet import Icons, Colors
 import threading
+from typing import List, Dict, Any
 
 # --- PALETA DE COLORES ---
-BACKGROUND_COLOR = "#1f2630"
-CARD_COLOR = "#2c3440"
-PRIMARY_TEXT_COLOR = Colors.WHITE
-SECONDARY_TEXT_COLOR = Colors.GREY_400
-ACCENT_COLOR = "#3399ff"
+BACKGROUND_COLOR: str = "#1f2630"
+CARD_COLOR: str = "#2c3440"
+PRIMARY_TEXT_COLOR: str = Colors.WHITE
+SECONDARY_TEXT_COLOR: str = Colors.GREY_400
+ACCENT_COLOR: str = "#3399ff"
 
-def get_social_icon(red_social):
+def get_social_icon(red_social: str) -> str:
     """Devuelve un icono basado en el nombre de la red social."""
     if red_social.lower() == "mastodon":
         return Icons.HIDE_SOURCE
@@ -20,20 +21,20 @@ def get_social_icon(red_social):
         return Icons.DISCORD
     return Icons.COMMENT
 
-def create_dashboard_view(page: ft.Page):
+def create_dashboard_view(page: ft.Page) -> ft.View:
     page.bgcolor = BACKGROUND_COLOR
 
     # Contenedor principal que se actualizará
-    main_content = ft.Column(
+    main_content: ft.Column = ft.Column(
         [ft.ProgressRing(width=32, height=32)],
         alignment=ft.MainAxisAlignment.CENTER,
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
         expand=True,
     )
 
-    def load_data_in_background():
+    def load_data_in_background() -> None:
         """Función que carga los datos y actualiza la UI."""
-        datos_publicaciones = procesar_y_agrupar_publicaciones()
+        datos_publicaciones: List[Dict[str, Any]] = procesar_y_agrupar_publicaciones()
         
         # Limpiar el indicador de carga
         main_content.controls.clear()
@@ -50,15 +51,15 @@ def create_dashboard_view(page: ft.Page):
                 )
             )
         else:
-            redes_encontradas = sorted(list(set(pub["red_social"] for pub in datos_publicaciones)))
-            lista_de_tabs = []
+            redes_encontradas: List[str] = sorted(list(set(pub["red_social"] for pub in datos_publicaciones)))
+            lista_de_tabs: List[ft.Tab] = []
 
             for red in redes_encontradas:
-                publicaciones_de_la_red = [
+                publicaciones_de_la_red: List[Dict[str, Any]] = [
                     pub for pub in datos_publicaciones if pub.get("red_social") == red
                 ]
                 
-                lista_de_tarjetas = []
+                lista_de_tarjetas: List[ft.Card] = []
                 for publicacion in publicaciones_de_la_red:
                     card = ft.Card(
                         content=ft.Container(
@@ -93,7 +94,7 @@ def create_dashboard_view(page: ft.Page):
                     )
                     lista_de_tarjetas.append(card)
 
-                contenido_del_tab = ft.Container(
+                contenido_del_tab: ft.Container = ft.Container(
                     content=ft.ResponsiveRow(
                         lista_de_tarjetas, 
                         spacing=20, 
@@ -110,7 +111,7 @@ def create_dashboard_view(page: ft.Page):
                     )
                 )
             
-            tabs_control = ft.Tabs(
+            tabs_control: ft.Tabs = ft.Tabs(
                 selected_index=0,
                 animation_duration=300,
                 tabs=lista_de_tabs,
@@ -132,7 +133,6 @@ def create_dashboard_view(page: ft.Page):
         controls=[
             ft.Column(
                 [
-                    # --- ¡AQUÍ ESTÁ EL CAMBIO! ---
                     ft.Row(
                         [
                             ft.IconButton(
@@ -147,9 +147,7 @@ def create_dashboard_view(page: ft.Page):
                         ],
                         vertical_alignment=ft.CrossAxisAlignment.CENTER
                     ),
-                    # --- FIN DEL CAMBIO ---
-                    
-                    tabs_control, 
+                    main_content,
                 ],
                 spacing=25,
                 expand=True,

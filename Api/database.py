@@ -1,33 +1,37 @@
 import os
+from pathlib import Path
 from sqlalchemy import create_engine, Column, String, Integer, Text, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+from sqlalchemy.engine import Engine
 from dotenv import load_dotenv
-# Cargar variables de entorno desde el archivo .env
-load_dotenv()
+
+# --- Cargar variables de entorno desde el archivo .env ---
+env_path = Path(__file__).resolve().parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # --- 1. CONFIGURACIÓN DE CONEXIÓN --- 
 # Usamos la contraseña simple que configuraste: admin123
-DB_USER = os.getenv("POSTGRES_USER")
-DB_PASS = os.getenv("POSTGRES_PASSWORD")
-DB_HOST = os.getenv("POSTGRES_SERVER")
-DB_PORT = os.getenv("POSTGRES_PORT")
+DB_USER: str = os.getenv("POSTGRES_USER")
+DB_PASS: str = os.getenv("POSTGRES_PASSWORD")
+DB_HOST: str = os.getenv("POSTGRES_SERVER")
+DB_PORT: str = os.getenv("POSTGRES_PORT")
 # Asegúrate de que este nombre coincida con el que ves en pgAdmin (a veces es sensible a mayúsculas)
-DB_NAME = os.getenv("POSTGRES_DB") 
+DB_NAME: str = os.getenv("POSTGRES_DB") 
 
 # URL de conexión
-DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+DATABASE_URL: str = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 print(f"🔌 Conectando a: {DATABASE_URL} ...")
 
 try:
     # --- AQUÍ ESTÁ EL ARREGLO (connect_args) ---
     # Forzamos a PostgreSQL a usar UTF-8 para el cliente, ignorando la configuración de Windows
-    engine = create_engine(
+    engine: Engine = create_engine(
     DATABASE_URL, 
     connect_args={"options": "-c client_encoding=utf8"}
     )
     
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    SessionLocal: sessionmaker = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     Base = declarative_base()
 except Exception as e:
     print(f"❌ Error fatal creando el motor de base de datos: {e}")
