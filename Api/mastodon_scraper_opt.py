@@ -2,8 +2,8 @@ import os
 import re
 import pathlib
 from mastodon import Mastodon
-# --- CAMBIO: Importamos la DB de Postgres ---
 from .database import SessionLocal, Publication, Comment
+from typing import List, Dict, Any
 
 def _limpiar_html(html_content):
     """Elimina etiquetas HTML simples del contenido de un toot."""
@@ -32,173 +32,181 @@ def _conectar_api_mastodon(progress_callback):
         return mastodon
     except Exception as e:
         progress_callback(f"❌ Error al conectar a Mastodon: {e}")
-        progress_callback(f"   Asegúrate de que 'user_token.secret' contenga tu token.")
         return None
 
 def _leer_ids_de_archivo(progress_callback):
-    """Lee los IDs desde el archivo de texto."""
+    """Lee los IDs desde el archivo de texto y devuelve una lista de IDs únicos."""
     INPUT_FILE = pathlib.Path(__file__).parent / "mastodon_ids.txt"
     if not os.path.exists(INPUT_FILE):
         progress_callback(f"❌ Error: No se encuentra el archivo de IDs: {INPUT_FILE}")
         return []
     with open(INPUT_FILE, 'r') as f:
         ids = [line.strip() for line in f if line.strip()]
-    progress_callback(f"Encontrados {len(ids)} IDs en {INPUT_FILE}")
-    return ids
+    
+    unique_ids = list(set(ids))
+    
+    if len(unique_ids) < len(ids):
+        progress_callback(f"Se encontraron {len(ids) - len(unique_ids)} IDs duplicados y se han eliminado.")
+        
+    progress_callback(f"Encontrados {len(unique_ids)} IDs únicos en {INPUT_FILE}")
+    return unique_ids
 
-def _mapear_sentimiento(label_original: str) -> str:
-    """Convierte las etiquetas del modelo a un formato estándar."""
-    label = label_original.upper()
-    if label in ['POSITIVE', 'LABEL_2', 'POS']: return 'positive'
-    if label in ['NEGATIVE', 'LABEL_0', 'NEG']: return 'negative'
-    return 'neutral'
+from Api.sentiment_utils import _mapear_sentimiento
 
 def run_mastodon_scrape_opt(progress_callback, translator, sentiment_analyzer):
     """
-    Versión PostgreSQL optimizada para Mastodon.
+    Versión PostgreSQL optimizada para Mastodon con procesamiento por lotes.
     """
-    
-    # 1. Conexión API
     mastodon = _conectar_api_mastodon(progress_callback)
     if not mastodon:
         progress_callback("Fallo en la inicialización de Mastodon. Abortando.")
         return
 
-    # 2. Leer IDs
     post_ids = _leer_ids_de_archivo(progress_callback)
     if not post_ids:
         progress_callback("No hay IDs para procesar. Saliendo.")
         return
 
-    # 3. Iniciar Sesión DB
     session = SessionLocal()
     nuevos_comentarios_totales = 0
+    nuevas_publicaciones_totales = 0
 
     progress_callback(f"\n--- Iniciando pipeline de Mastodon para {len(post_ids)} publicaciones ---")
 
     try:
-        for post_id in post_ids:
-            progress_callback(f"Procesando publicación: {post_id}")
-            try:
-                # Obtener datos de la API
-                post = mastodon.status(post_id)
-                post_content_orig = _limpiar_html(post['content'])
-                post_lang = post.get('language', 'und')
-                
-                # Preparar Título
-                title_original = post_content_orig[:200] # Cortamos para el título si es muy largo
-                title_translated = title_original
+        # --- GESTIÓN DE PUBLICACIONES (BATCH) ---
+        progress_callback("Verificando publicaciones existentes...")
+        existing_pubs_query = session.query(Publication.id).filter(Publication.id.in_(post_ids))
+        existing_pub_ids = {pub_id[0] for pub_id in existing_pubs_query}
+        
+        new_post_ids = [pid for pid in post_ids if pid not in existing_pub_ids]
+        
+        new_pubs_to_add: List[Publication] = []
+        titles_to_translate: Dict[str, str] = {}
 
-                # Traducción del Post (Título)
-                if post_lang == 'en' and translator:
-                    try:
-                        trans_res = translator(title_original, max_length=512)
-                        if trans_res:
-                            title_translated = trans_res[0]['translation_text']
-                    except:
-                        pass # Fallback
-                elif post_lang != 'es':
-                    title_translated = f"[{post_lang}] {title_original}"
-
-                # --- GESTIÓN DE PUBLICACIÓN (ORM) ---
-                # Verificar si existe
-                existing_pub = session.query(Publication).filter_by(id=str(post_id)).first()
-                
-                if not existing_pub:
-                    new_pub = Publication(
+        if new_post_ids:
+            progress_callback(f"Descargando {len(new_post_ids)} publicaciones nuevas...")
+            for post_id in new_post_ids:
+                try:
+                    post = mastodon.status(post_id)
+                    title_original = _limpiar_html(post['content'])[:200]
+                    lang = post.get('language', 'und')
+                    
+                    if lang == 'en' and translator:
+                        titles_to_translate[title_original] = post_id
+                    
+                    new_pubs_to_add.append(Publication(
                         id=str(post_id),
                         red_social='Mastodon',
                         title_original=title_original,
-                        title_translated=title_translated
-                    )
-                    session.add(new_pub)
-                    session.commit() # Guardar publicación
-                else:
-                    # Opcional: Actualizar si ya existe
-                    pass
+                        title_translated=title_original 
+                    ))
+                except Exception as e:
+                    progress_callback(f"Error descargando post {post_id}: {e}")
 
-                # --- GESTIÓN DE COMENTARIOS ---
+        if titles_to_translate:
+            progress_callback(f"Traduciendo {len(titles_to_translate)} títulos...")
+            try:
+                results = translator(list(titles_to_translate.keys()), max_length=512, batch_size=16)
+                for i, res in enumerate(results):
+                    original_title = list(titles_to_translate.keys())[i]
+                    post_id_to_update = titles_to_translate[original_title]
+                    for pub in new_pubs_to_add:
+                        if pub.id == post_id_to_update:
+                            pub.title_translated = res['translation_text']
+                            break
+            except Exception as e:
+                progress_callback(f"❌ Error al traducir títulos en lote: {e}")
+
+        if new_pubs_to_add:
+            session.bulk_save_objects(new_pubs_to_add)
+            nuevas_publicaciones_totales = len(new_pubs_to_add)
+            progress_callback(f"  └ +{nuevas_publicaciones_totales} publicaciones nuevas agregadas.")
+
+        # --- GESTIÓN DE COMENTARIOS (BATCH) ---
+        progress_callback("Descargando comentarios...")
+        all_comments_to_process: List[Dict[str, Any]] = []
+        for post_id in post_ids:
+            try:
                 context = mastodon.status_context(post_id)
-                comments = context['descendants']
-                
-                nuevos_comentarios_post = 0
-                
-                if not comments:
-                    progress_callback(f"  └ Publicación {post_id}: No hay comentarios.")
-                    continue
+                for comment in context['descendants']:
+                    text = _limpiar_html(comment['content'])
+                    if text:
+                        all_comments_to_process.append({
+                            'publication_id': post_id,
+                            'author': comment['account']['username'],
+                            'text_original': text,
+                            'lang': comment.get('language', 'und')
+                        })
+            except Exception as e:
+                progress_callback(f"Error descargando comentarios para {post_id}: {e}")
 
-                for comment in comments:
-                    try:
-                        comment_text_orig = _limpiar_html(comment['content'])
-                        comment_lang = comment.get('language', 'und')
-                        comment_author = comment['account']['username']
-                        
-                        if not comment_text_orig:
-                            continue
+        if not all_comments_to_process:
+            progress_callback("No se encontraron comentarios nuevos para procesar.")
+            return
 
-                        # Verificar duplicados en DB (Buscamos por Post + Autor + Texto)
-                        # Esto evita que se repitan si corres el script 2 veces
-                        existing_comment = session.query(Comment).filter_by(
-                            publication_id=str(post_id),
-                            author=comment_author,
-                            text_original=comment_text_orig
-                        ).first()
-
-                        if existing_comment:
-                            continue
-
-                        # Lógica de traducción
-                        text_translated = comment_text_orig
-                        text_para_analisis = comment_text_orig
-
-                        if comment_lang == 'es':
-                            pass
-                        elif comment_lang == 'en' and translator:
-                            try:
-                                trans_res = translator(comment_text_orig, max_length=512)
-                                if trans_res:
-                                    text_translated = trans_res[0]['translation_text']
-                                    text_para_analisis = comment_text_orig # Analizamos el original en inglés si el modelo lo soporta, o el traducido
-                            except:
-                                pass
-                        
-                        # Análisis de Sentimiento
-                        if sentiment_analyzer:
-                            sentiment_result = sentiment_analyzer(text_para_analisis[:512])[0]
-                            sentiment_label = _mapear_sentimiento(sentiment_result['label'])
-                            sentiment_score = str(round(sentiment_result.get('score', 0.0), 4))
-                        else:
-                            sentiment_label = 'neutral'
-                            sentiment_score = '0.0'
-                        
-                        # Crear Comentario
-                        new_comment = Comment(
-                            publication_id=str(post_id),
-                            author=comment_author,
-                            text_original=comment_text_orig,
-                            text_translated=text_translated,
-                            sentiment_label=sentiment_label,
-                            sentiment_score=sentiment_score
-                        )
-                        session.add(new_comment)
-                        nuevos_comentarios_post += 1
-
-                    except Exception as e_comment:
-                        # Errores puntuales en un comentario no detienen el proceso
-                        pass
-
-                if nuevos_comentarios_post > 0:
-                    session.commit()
-                    nuevos_comentarios_totales += nuevos_comentarios_post
-                    progress_callback(f"  └ +{nuevos_comentarios_post} comentarios guardados.")
-
-            except Exception as e_post:
-                session.rollback()
-                progress_callback(f"\nError procesando publicación {post_id}: {e_post}")
-                
-    except Exception as e_main:
-        progress_callback(f"Error general en pipeline Mastodon: {e_main}")
+        progress_callback("Verificando comentarios duplicados...")
+        query = session.query(Comment.publication_id, Comment.author, Comment.text_original).filter(Comment.publication_id.in_(post_ids))
+        existing_comment_tuples = {(p_id, author, text) for p_id, author, text in query}
         
+        unique_comments = [c for c in all_comments_to_process if (c['publication_id'], c['author'], c['text_original']) not in existing_comment_tuples]
+
+        if not unique_comments:
+            progress_callback("No hay comentarios nuevos para analizar.")
+            return
+            
+        progress_callback(f"Procesando {len(unique_comments)} comentarios únicos...")
+        
+        texts_to_translate = [c['text_original'] for c in unique_comments if c['lang'] == 'en' and translator]
+        translated_texts = {}
+        if texts_to_translate:
+            try:
+                results = translator(texts_to_translate, max_length=512, batch_size=16)
+                for i, res in enumerate(results):
+                    translated_texts[texts_to_translate[i]] = res['translation_text']
+            except Exception as e:
+                progress_callback(f"❌ Error traduciendo comentarios: {e}")
+
+        texts_for_sentiment = [translated_texts.get(c['text_original'], c['text_original']) for c in unique_comments]
+        sentiments = []
+        if sentiment_analyzer and texts_for_sentiment:
+            try:
+                sentiments = sentiment_analyzer(texts_for_sentiment, batch_size=16, truncation=True)
+            except Exception as e:
+                progress_callback(f"❌ Error analizando sentimientos: {e}")
+
+        new_comments_to_add: List[Comment] = []
+        for i, comment_data in enumerate(unique_comments):
+            sentiment_label = 'neutral'
+            sentiment_score = '0.0'
+            
+            if i < len(sentiments):
+                s_res = sentiments[i]
+                sentiment_label = _mapear_sentimiento(s_res['label'])
+                sentiment_score = str(round(s_res.get('score', 0.0), 4))
+            
+            text_translated = translated_texts.get(comment_data['text_original'], comment_data['text_original'])
+            
+            new_comments_to_add.append(Comment(
+                publication_id=comment_data['publication_id'],
+                author=comment_data['author'],
+                text_original=comment_data['text_original'],
+                text_translated=text_translated,
+                sentiment_label=sentiment_label,
+                sentiment_score=sentiment_score
+            ))
+
+        if new_comments_to_add:
+            session.bulk_save_objects(new_comments_to_add)
+            nuevos_comentarios_totales = len(new_comments_to_add)
+            progress_callback(f"  └ +{nuevos_comentarios_totales} comentarios nuevos guardados.")
+
+        progress_callback("Guardando todos los cambios en la base de datos...")
+        session.commit()
+
+    except Exception as e:
+        session.rollback()
+        progress_callback(f"❌ Error general en pipeline Mastodon: {e}")
     finally:
-        session.close() # Cerrar conexión
-        progress_callback(f"\n--- ✅ Pipeline de Mastodon finalizado. Total nuevos: {nuevos_comentarios_totales} ---")
+        session.close()
+        progress_callback(f"\n--- ✅ Pipeline de Mastodon finalizado. Nuevas publicaciones: {nuevas_publicaciones_totales}, Nuevos comentarios: {nuevos_comentarios_totales} ---")

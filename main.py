@@ -73,7 +73,7 @@ def main(page: ft.Page):
         page.go(top_view.route)
 
     # --- Lógica de Scraper Global (Conectada al botón de actualizar) ---
-    def run_all_scrapers(e):
+    def run_all_scrapers(e, translate: bool, page: ft.Page):
         def _bg_task():
             def progress(msg):
                 print(f"[Scraper] {msg}")
@@ -82,17 +82,26 @@ def main(page: ft.Page):
                 print("⚠️ Espera a que los modelos carguen...")
                 return
 
+            # Usar el traductor solo si está habilitado
+            translator_to_use = translator_model if translate else None
+
             # Ejecutar uno por uno
-            run_reddit_scrape_opt(progress, translator_model, sentiment_model, "Python", 5, 5)
-            run_facebook_scrape_opt(progress, translator_model, sentiment_model)
-            run_mastodon_scrape_opt(progress, translator_model, sentiment_model)
+            run_reddit_scrape_opt(progress, translator_to_use, sentiment_model, "Python", 5, 5)
+            # TODO: A futuro, pasar el translator_to_use a los otros scrapers
+            run_facebook_scrape_opt(progress, translator_to_use, sentiment_model)
+            run_mastodon_scrape_opt(progress, translator_to_use, sentiment_model)
             
-            print("🎉 Todo actualizado. Recarga la vista.")
+            page.snack_bar = ft.SnackBar(
+                content=ft.Text("🎉 ¡Datos actualizados! Recarga el dashboard para ver los cambios."),
+                open=True,
+                bgcolor=ft.colors.GREEN_700
+            )
+            page.update()
             
         threading.Thread(target=_bg_task, daemon=True).start()
 
     # Guardamos la función en page.data para que social_select.py pueda usarla
-    page.data = {"run_all_scrapers_func": run_all_scrapers}
+    page.data = {"run_all_scrapers_func": lambda e, translate: run_all_scrapers(e, translate, page)}
 
     page.on_route_change = route_change
     page.on_view_pop = view_pop

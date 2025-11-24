@@ -19,7 +19,7 @@ def create_social_select_view(page: ft.Page) -> ft.View:
         
         # CORRECCIÓN: Creamos y asignamos el SnackBar directamente
         page.snack_bar = ft.SnackBar(
-            content=ft.Text(f"Cargando dashboard de: {platform.capitalize()}..."),
+            content=ft.Text(f"Cargando dashboard de: {platform.capitalize()}", style=ft.TextStyle(color=Colors.WHITE)),
             bgcolor=Colors.TEAL_700
         )
         page.snack_bar.open = True
@@ -52,15 +52,19 @@ def create_social_select_view(page: ft.Page) -> ft.View:
             height=200,
         )
 
+    # --- Checkbox para traducción ---
+    translate_checkbox = ft.Checkbox(label="Traducir comentarios (más lento)", value=True)
+
     # --- 2. Función Scraper corregida ---
     def run_scrapers_and_show_log(e):
         if page.data and "run_all_scrapers_func" in page.data:
             run_func = page.data["run_all_scrapers_func"]
-            run_func(e) 
+            # Pasar el valor del checkbox a la función
+            run_func(e, translate_checkbox.value) 
             
             # CORRECCIÓN: Creamos y asignamos el SnackBar directamente
             page.snack_bar = ft.SnackBar(
-                content=ft.Text("Iniciando actualización en segundo plano... (Revisa la terminal)"),
+                content=ft.Text("Iniciando actualización en segundo plano... (Revisa la terminal)", style=ft.TextStyle(color=Colors.WHITE)),
                 bgcolor=Colors.TEAL_700
             )
             page.snack_bar.open = True
@@ -70,7 +74,7 @@ def create_social_select_view(page: ft.Page) -> ft.View:
             print("Error: La función 'run_all_scrapers_func' no está en 'page.data'.")
             # CORRECCIÓN: SnackBar de error
             page.snack_bar = ft.SnackBar(
-                content=ft.Text("¡Error! No se pudo iniciar el scrape. Reinicia la app."),
+                content=ft.Text("¡Error! No se pudo iniciar el scrape. Reinicia la app.", style=ft.TextStyle(color=Colors.WHITE)),
                 bgcolor=Colors.RED_700
             )
             page.snack_bar.open = True
@@ -80,7 +84,7 @@ def create_social_select_view(page: ft.Page) -> ft.View:
     return ft.View(
         "/social_select",
         [
-            ft.AppBar(title=ft.Text("🌐 Selecciona tu Fuente de Datos"), bgcolor=Colors.TEAL_700),
+            ft.AppBar(title=ft.Text("🌐 Selecciona tu Fuente de Datos", style=ft.TextStyle(color=Colors.WHITE)), bgcolor=Colors.TEAL_700),
             ft.Container(
                 content=ft.Column(
                     [
@@ -115,23 +119,31 @@ def create_social_select_view(page: ft.Page) -> ft.View:
                         
                         ft.Container(height=50),
                         
-                        ft.Row(
+                        # --- Contenedor para botones y checkbox ---
+                        ft.Column(
                             [
-                                ft.TextButton(
-                                    "Volver al Login",
-                                    icon=Icons.ARROW_BACK, 
-                                    on_click=lambda e: page.go("/login")
-                                ),
-                                ft.ElevatedButton(
-                                    "Actualizar Datos",
-                                    icon=Icons.REFRESH,
-                                    on_click=run_scrapers_and_show_log,
-                                    bgcolor=Colors.TEAL_700,
-                                    color=Colors.WHITE,       
+                                translate_checkbox,
+                                ft.Row(
+                                    [
+                                        ft.TextButton(
+                                            "Volver al Login",
+                                            icon=Icons.ARROW_BACK, 
+                                            on_click=lambda e: page.go("/login")
+                                        ),
+                                        ft.ElevatedButton(
+                                            "Actualizar Datos",
+                                            icon=Icons.REFRESH,
+                                            on_click=run_scrapers_and_show_log,
+                                            bgcolor=Colors.TEAL_700,
+                                            color=Colors.WHITE,       
+                                        )
+                                    ],
+                                    alignment=ft.MainAxisAlignment.CENTER,
+                                    spacing=20 
                                 )
                             ],
-                            alignment=ft.MainAxisAlignment.CENTER,
-                            spacing=20 
+                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                            spacing=20
                         )
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,

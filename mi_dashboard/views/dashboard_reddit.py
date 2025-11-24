@@ -32,7 +32,7 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
     publications, comments_map = get_reddit_data()
 
     if not publications:
-        publications_list_view.controls.append(ft.Text("No hay datos de Reddit."))
+        publications_list_view.controls.append(ft.Text("No hay datos de Reddit.", style=ft.TextStyle(color=Colors.GREY_500)))
 
     def on_post_click(e):
         post_id = e.control.data 
@@ -44,15 +44,15 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
         comments_for_post = comments_map.get(post_id, [])
         
         if not comments_for_post:
-            comments_list_view.controls.append(ft.ListTile(title=ft.Text("Sin comentarios.")))
+            comments_list_view.controls.append(ft.ListTile(title=ft.Text("Sin comentarios.", style=ft.TextStyle(color=Colors.GREY_500))))
         else:
             for comment in comments_for_post:
                 comments_list_view.controls.append(
                     ft.Card(
                         ft.ListTile(
                             leading=get_sentiment_icon(comment.sentiment_label),
-                            title=ft.Text(f"u/{comment.author}", weight=ft.FontWeight.BOLD),
-                            subtitle=ft.Text(comment.text_translated or "")
+                            title=ft.Text(f"u/{comment.author}", style=ft.TextStyle(weight=ft.FontWeight.BOLD)),
+                            subtitle=ft.Text(comment.text_translated or "", style=ft.TextStyle(color=Colors.GREY_400))
                         ),
                         elevation=2
                     )
@@ -65,9 +65,9 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
             ft.Card(
                 content=ft.Container(
                     ft.ListTile(
-                        title=ft.Text(post.title_translated or "", weight=ft.FontWeight.BOLD),
-                        subtitle=ft.Text(post.title_original or "", italic=True, color=Colors.GREY_500),
-                        trailing=ft.Text(f"{comment_count}", color=Colors.ORANGE_ACCENT_700),
+                        title=ft.Text(post.title_translated or "", style=ft.TextStyle(weight=ft.FontWeight.BOLD)),
+                        subtitle=ft.Text(post.title_original or "", style=ft.TextStyle(italic=True, color=Colors.GREY_500)),
+                        trailing=ft.Text(f"{comment_count}", style=ft.TextStyle(color=Colors.ORANGE_ACCENT_700)),
                         on_click=on_post_click,
                         data=post.id
                     ),
@@ -80,10 +80,15 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
     return ft.View(
         "/dashboard/reddit",
         [
-            ft.AppBar(title=ft.Text("📊 Reddit"), bgcolor=Colors.ORANGE_ACCENT_700, actions=[ft.IconButton(Icons.ARROW_BACK, on_click=lambda _: page.go("/social_select"))]),
+            ft.AppBar(title=ft.Text("📊 Reddit", style=ft.TextStyle(color=Colors.WHITE)), bgcolor=Colors.ORANGE_ACCENT_700, actions=[ft.IconButton(Icons.ARROW_BACK, on_click=lambda _: page.go("/social_select"))]),
             ft.Row(
                 [
-                    ft.Column([ft.Text("Hilos"), ft.Divider(), publications_list_view], expand=3),
+                    ft.Column(
+                        [
+                            ft.Text("Hilos", style=ft.TextThemeStyle.HEADLINE_SMALL), 
+                            ft.Divider(), 
+                            publications_list_view
+                        ], expand=3),
                     ft.VerticalDivider(width=1),
                     ft.Column([selected_post_title, ft.Divider(), comments_list_view], expand=2)
                 ],

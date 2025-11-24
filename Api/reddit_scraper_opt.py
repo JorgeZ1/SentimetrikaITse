@@ -1,173 +1,186 @@
 import praw
 import os
 from dotenv import load_dotenv
-# --- CAMBIO: Importamos la DB de Postgres ---
 from .database import SessionLocal, Publication, Comment
+from typing import List, Dict, Any
 
-load_dotenv() 
+load_dotenv()
 
 # Configuración
 CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
 CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
 USER_AGENT = "python:SentimentApp:v2.0 (by /u/TuUsuario)"
 
-def _mapear_sentimiento_reddit(label_original: str) -> str:
-    """Normaliza las etiquetas del modelo"""
-    label = label_original.upper()
-    if label in ['POSITIVE', 'LABEL_2', 'POS']: return 'positive'
-    if label in ['NEGATIVE', 'LABEL_0', 'NEG']: return 'negative'
-    return 'neutral'
+from Api.sentiment_utils import _mapear_sentimiento
 
 def run_reddit_scrape_opt(progress_callback, translator, sentiment_analyzer, subreddit_name, post_limit, comment_limit):
     """
-    Versión PostgreSQL optimizada para Reddit.
+    Versión PostgreSQL optimizada para Reddit con procesamiento por lotes.
     """
-    
-    # 1. Validar Credenciales
     if not CLIENT_ID or not CLIENT_SECRET:
         progress_callback("⚠️ ADVERTENCIA: Faltan credenciales de Reddit en el .env")
-        return 
+        return
 
     progress_callback(f"Conectando a Reddit para analizar r/{subreddit_name}...")
-    
-    try:
-        reddit = praw.Reddit(
-            client_id=CLIENT_ID, 
-            client_secret=CLIENT_SECRET, 
-            user_agent=USER_AGENT
-        )
-        # Prueba de conexión ligera
-        reddit.user.me() 
-    except Exception as e:
-        # Si falla user.me() puede ser modo solo lectura, intentamos seguir, 
-        # pero si es error de credenciales fallará abajo.
-        pass
 
-    # 2. Iniciar Sesión DB
+    try:
+        reddit = praw.Reddit(client_id=CLIENT_ID, client_secret=CLIENT_SECRET, user_agent=USER_AGENT)
+        reddit.user.me()
+    except Exception as e:
+        progress_callback(f"ℹ️ Could not log in with user. Operating in read-only mode. Error: {e}")
+
+
     session = SessionLocal()
     nuevos_comentarios_totales = 0
+    nuevas_publicaciones_totales = 0
 
     try:
         subreddit = reddit.subreddit(subreddit_name)
-        # Usamos .hot() para obtener lo más relevante
-        iterator = subreddit.hot(limit=post_limit)
+        progress_callback(f"Descargando {post_limit} publicaciones de r/{subreddit_name}...")
         
-        progress_callback(f"Descargando publicaciones de r/{subreddit_name}...")
+        posts = list(subreddit.hot(limit=post_limit))
+        post_ids = [post.id for post in posts]
 
-        for i, submission in enumerate(iterator):
-            post_id = submission.id
-            post_title = submission.title
-            
-            progress_callback(f"Procesando Post {i+1}/{post_limit}: {post_title[:40]}...")
+        # --- GESTIÓN DE PUBLICACIONES (BATCH) ---
+        progress_callback("Verificando publicaciones existentes en la base de datos...")
+        existing_pubs_query = session.query(Publication.id).filter(Publication.id.in_(post_ids))
+        existing_pub_ids = {pub_id[0] for pub_id in existing_pubs_query}
+        
+        new_pubs_to_add: List[Publication] = []
+        titles_to_translate = []
+        pub_id_to_title = {}
 
-            # --- GESTIÓN PUBLICACIÓN (ORM) ---
-            existing_pub = session.query(Publication).filter_by(id=str(post_id)).first()
+        for post in posts:
+            if post.id not in existing_pub_ids:
+                titles_to_translate.append(post.title)
+                pub_id_to_title[post.id] = post.title
+        
+        translated_titles: Dict[str, str] = {}
+        if translator and titles_to_translate:
+            progress_callback(f"Traduciendo {len(titles_to_translate)} títulos...")
+            try:
+                # El modelo de Helsinki-NLP es más eficiente con lotes
+                results = translator(titles_to_translate, max_length=512, batch_size=16) 
+                for i, res in enumerate(results):
+                    original_title = titles_to_translate[i]
+                    translated_titles[original_title] = res['translation_text']
+            except Exception as e:
+                progress_callback(f"❌ Error al traducir títulos en lote: {e}")
 
-            if not existing_pub:
-                # Traducir título si es necesario
-                title_translated = post_title
-                try:
-                    # Asumimos que si está en inglés lo traducimos, 
-                    # pero Reddit no siempre da el idioma. 
-                    # Intentamos traducir directo.
-                    if translator:
-                        res = translator(post_title, max_length=512)
-                        if res: title_translated = res[0]['translation_text']
-                except:
-                    pass
+        for post_id, original_title in pub_id_to_title.items():
+            translated = translated_titles.get(original_title, original_title)
+            new_pub = Publication(
+                id=str(post_id),
+                red_social='Reddit',
+                title_original=original_title,
+                title_translated=translated
+            )
+            new_pubs_to_add.append(new_pub)
 
-                new_pub = Publication(
-                    id=str(post_id),
-                    red_social='Reddit',
-                    title_original=post_title,
-                    title_translated=title_translated
-                )
-                session.add(new_pub)
-                session.commit() # Guardar post
-            else:
-                # Ya existe, usamos el título existente
-                pass
-
-            # --- GESTIÓN COMENTARIOS ---
-            submission.comments.replace_more(limit=0) # Evitar árboles de comentarios profundos que ralentizan
-            comments_batch = submission.comments[:comment_limit]
-            
-            nuevos_comentarios_post = 0
-
+        if new_pubs_to_add:
+            session.bulk_save_objects(new_pubs_to_add)
+            nuevas_publicaciones_totales = len(new_pubs_to_add)
+            progress_callback(f"  └ +{nuevas_publicaciones_totales} publicaciones nuevas agregadas.")
+        
+        # --- GESTIÓN DE COMENTARIOS (BATCH) ---
+        all_comments_to_process: List[Dict[str, Any]] = []
+        
+        progress_callback("Descargando comentarios...")
+        for post in posts:
+            post.comments.replace_more(limit=0)
+            comments_batch = post.comments[:comment_limit]
             for comment in comments_batch:
-                try:
-                    if not hasattr(comment, 'body') or not comment.body:
-                        continue
+                if hasattr(comment, 'body') and comment.body:
+                    all_comments_to_process.append({
+                        'publication_id': post.id,
+                        'author': str(comment.author) if comment.author else "[deleted]",
+                        'text_original': comment.body,
+                        'comment_obj': comment 
+                    })
+        
+        if not all_comments_to_process:
+            progress_callback("No se encontraron comentarios para procesar.")
+            return
 
-                    comment_text = comment.body
-                    comment_author = str(comment.author) if comment.author else "[deleted]"
+        # Optimización de duplicados: buscar todos los comentarios existentes de una vez
+        progress_callback("Verificando comentarios duplicados...")
+        existing_comment_tuples = set()
+        if post_ids:
+            query = session.query(Comment.publication_id, Comment.author, Comment.text_original).filter(Comment.publication_id.in_(post_ids))
+            for p_id, author, text in query:
+                existing_comment_tuples.add((p_id, author, text))
 
-                    # Verificar duplicados
-                    # Buscamos por ID de publicación + Autor + Texto original
-                    existing_comment = session.query(Comment).filter_by(
-                        publication_id=str(post_id),
-                        author=comment_author,
-                        text_original=comment_text
-                    ).first()
+        
+        unique_comments = []
+        for c in all_comments_to_process:
+            if (c['publication_id'], c['author'], c['text_original']) not in existing_comment_tuples:
+                unique_comments.append(c)
 
-                    if existing_comment:
-                        continue
+        if not unique_comments:
+            progress_callback("No hay comentarios nuevos para analizar.")
+            return
 
-                    # Procesamiento IA
-                    text_translated = comment_text
-                    text_para_analisis = comment_text
+        progress_callback(f"Procesando {len(unique_comments)} comentarios únicos...")
+        
+        # Traducción en lote
+        texts_to_translate = [c['text_original'] for c in unique_comments]
+        translated_texts = {}
+        if translator and texts_to_translate:
+            progress_callback(f"Traduciendo {len(texts_to_translate)} comentarios...")
+            try:
+                results = translator(texts_to_translate, max_length=512, batch_size=16)
+                for i, res in enumerate(results):
+                    translated_texts[texts_to_translate[i]] = res['translation_text']
+            except Exception as e:
+                progress_callback(f"❌ Error traduciendo comentarios: {e}")
+        
+        # Análisis de sentimiento en lote
+        texts_for_sentiment = [translated_texts.get(c['text_original'], c['text_original']) for c in unique_comments]
+        sentiments = []
+        if sentiment_analyzer and texts_for_sentiment:
+            progress_callback(f"Analizando sentimiento de {len(texts_for_sentiment)} comentarios...")
+            try:
+                # Usar `truncation=True` para manejar textos largos sin errores
+                results = sentiment_analyzer(texts_for_sentiment, batch_size=16, truncation=True)
+                sentiments = results
+            except Exception as e:
+                progress_callback(f"❌ Error analizando sentimientos: {e}")
 
-                    # Intento de traducción
-                    if translator:
-                        try:
-                            trans_res = translator(comment_text, max_length=512)
-                            if trans_res:
-                                text_translated = trans_res[0]['translation_text']
-                        except:
-                            pass # Fallback al original
-
-                    # Análisis de Sentimiento 
-
-                    if sentiment_analyzer:
-                        try:
-                            # Analizamos el texto (traducido o no, según convenga al modelo)
-                            # Si tu modelo es multilingüe usa el original, si es en inglés usa el traducido.
-                            # Asumiremos modelo en inglés por defecto:
-                            s_res = sentiment_analyzer(text_translated[:512])[0]
-                            sentiment_label = _mapear_sentimiento_reddit(s_res['label'])
-                            sentiment_score = str(round(s_res.get('score', 0.0), 4))
-                        except:
-                            sentiment_label = 'neutral'
-                            sentiment_score = '0.0'
-                    else:
-                        sentiment_label = 'neutral'
-                        sentiment_score = '0.0'
-
-                    # Crear objeto
-                    new_comment = Comment(
-                        publication_id=str(post_id),
-                        author=comment_author,
-                        text_original=comment_text,
-                        text_translated=text_translated,
-                        sentiment_label=sentiment_label,
-                        sentiment_score=sentiment_score
-                    )
-                    session.add(new_comment)
-                    nuevos_comentarios_post += 1
-
-                except Exception as e_comm:
-                    # Error en un comentario no detiene el post
-                    continue
+        # Crear objetos Comment en lote
+        new_comments_to_add: List[Comment] = []
+        for i, comment_data in enumerate(unique_comments):
+            sentiment_label = 'neutral'
+            sentiment_score = '0.0'
             
-            # Commit por publicación
-            if nuevos_comentarios_post > 0:
-                session.commit()
-                nuevos_comentarios_totales += nuevos_comentarios_post
-                progress_callback(f"  └ +{nuevos_comentarios_post} comentarios guardados.")
+            if i < len(sentiments):
+                s_res = sentiments[i]
+                sentiment_label = _mapear_sentimiento(s_res['label'])
+                sentiment_score = str(round(s_res.get('score', 0.0), 4))
+            
+            text_translated = translated_texts.get(comment_data['text_original'], comment_data['text_original'])
+            
+            new_comment = Comment(
+                publication_id=comment_data['publication_id'],
+                author=comment_data['author'],
+                text_original=comment_data['text_original'],
+                text_translated=text_translated,
+                sentiment_label=sentiment_label,
+                sentiment_score=sentiment_score
+            )
+            new_comments_to_add.append(new_comment)
+
+        if new_comments_to_add:
+            session.bulk_save_objects(new_comments_to_add)
+            nuevos_comentarios_totales = len(new_comments_to_add)
+            progress_callback(f"  └ +{nuevos_comentarios_totales} comentarios nuevos guardados.")
+
+        # Commit final
+        progress_callback("Guardando todos los cambios en la base de datos...")
+        session.commit()
 
     except Exception as e:
         session.rollback()
         progress_callback(f"❌ Error general en Reddit Scraper: {e}")
     finally:
         session.close()
-        progress_callback(f"\n--- ✅ Pipeline de Reddit finalizado. Total nuevos: {nuevos_comentarios_totales} ---")
+        progress_callback(f"\n--- ✅ Pipeline de Reddit finalizado. Nuevas publicaciones: {nuevas_publicaciones_totales}, Nuevos comentarios: {nuevos_comentarios_totales} ---")

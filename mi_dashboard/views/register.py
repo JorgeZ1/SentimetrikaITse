@@ -39,7 +39,7 @@ def create_register_view(page: ft.Page):
         bgcolor=ft.Colors.WHITE,
         color=ft.Colors.BLACK,  # 👈 Color del texto que se escribe
     )
-    error_text = ft.Text("", color=ACCENT_MAGENTA)
+    error_text = ft.Text("", style=ft.TextStyle(color=ACCENT_MAGENTA))
     
     # ---------- Validaciones y Lógica ----------
     def is_valid_email(email_value: str) -> bool:
@@ -94,9 +94,7 @@ def create_register_view(page: ft.Page):
                         [
                             ft.Text(
                                 "Crea tu cuenta",
-                                size=28,
-                                weight="bold",
-                                color=TEXT_DARK,
+                                style=ft.TextStyle(size=28, weight=ft.FontWeight.BOLD, color=TEXT_DARK),
                             ),
                             email,
                             password,

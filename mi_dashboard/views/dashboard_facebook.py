@@ -49,7 +49,7 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
 
     if not publications:
         publications_list_view.controls.append(
-            ft.Text("No se encontraron datos de Facebook en PostgreSQL.")
+            ft.Text("No se encontraron datos de Facebook en PostgreSQL.", style=ft.TextStyle(color=Colors.GREY_500))
         )
 
     # --- Eventos ---
@@ -67,7 +67,7 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
         
         if not comments_for_post:
             comments_list_view.controls.append(
-                ft.ListTile(title=ft.Text("No se encontraron comentarios."))
+                ft.ListTile(title=ft.Text("No se encontraron comentarios.", style=ft.TextStyle(color=Colors.GREY_500)))
             )
         else:
             for comment in comments_for_post:
@@ -76,8 +76,8 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
                     ft.Card(
                         ft.ListTile(
                             leading=get_sentiment_icon(comment.sentiment_label),
-                            title=ft.Text(f"@{comment.author}", weight=ft.FontWeight.BOLD),
-                            subtitle=ft.Text(comment.text_translated or "")
+                            title=ft.Text(f"@{comment.author}", style=ft.TextStyle(weight=ft.FontWeight.BOLD)),
+                            subtitle=ft.Text(comment.text_translated or "", style=ft.TextStyle(color=Colors.GREY_400))
                         ),
                         elevation=2
                     )
@@ -91,9 +91,9 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
             ft.Card(
                 content=ft.Container(
                     ft.ListTile(
-                        title=ft.Text(post.title_translated or "Sin texto", weight=ft.FontWeight.BOLD),
-                        subtitle=ft.Text(post.title_original or "", italic=True, color=Colors.GREY_500),
-                        trailing=ft.Text(f"{comment_count} Comentarios", color=Colors.BLUE_800),
+                        title=ft.Text(post.title_translated or "Sin texto", style=ft.TextStyle(weight=ft.FontWeight.BOLD)),
+                        subtitle=ft.Text(post.title_original or "", style=ft.TextStyle(italic=True, color=Colors.GREY_500)),
+                        trailing=ft.Text(f"{comment_count} Comentarios", style=ft.TextStyle(color=Colors.BLUE_800)),
                         on_click=on_post_click,
                         data=post.id
                     ),
@@ -107,7 +107,7 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
         "/dashboard/facebook",
         [
             ft.AppBar(
-                title=ft.Text("📘 Dashboard de Facebook"),
+                title=ft.Text("📘 Dashboard de Facebook", style=ft.TextStyle(color=Colors.WHITE)),
                 bgcolor=Colors.BLUE_800,
                 actions=[
                     ft.IconButton(Icons.ARROW_BACK, on_click=lambda _: page.go("/social_select"))

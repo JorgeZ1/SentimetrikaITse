@@ -30,7 +30,7 @@ def create_login_view(page: ft.Page):
         label_style=ft.TextStyle(color=TEXT_DARK, size=16),
         value=False,
     )
-    error_text = ft.Text("", color=ACCENT_MAGENTA)
+    error_text = ft.Text("", style=ft.TextStyle(color=ACCENT_MAGENTA))
 
     def login_action(e):
         if authenticate(email.value, password.value):
@@ -63,7 +63,10 @@ def create_login_view(page: ft.Page):
                         content=ft.Column(
                             [
                                 ft.Image(src="Sentimetrika.png", width=120),
-                                ft.Text("¡Bienvenido de nuevo!", size=24, weight="bold", color=TEXT_DARK),
+                                ft.Text(
+                                    "¡Bienvenido de nuevo!", 
+                                    style=ft.TextStyle(size=24, weight=ft.FontWeight.BOLD, color=TEXT_DARK)
+                                ),
                                 email,
                                 password,
                                 remember_me,
