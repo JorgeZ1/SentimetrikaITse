@@ -1,25 +1,15 @@
 import flet as ft
-from flet import Icons, Colors 
+from flet import Icons, Colors, FontWeight, TextThemeStyle, BoxShadow, Offset
 
 def create_social_select_view(page: ft.Page) -> ft.View:
 
-    # --- 1. Función corregida: Crear SnackBar explícitamente ---
+    # --- 1. LÓGICA DE NAVEGACIÓN ---
     def handle_selection(e):
         platform = e.control.data
         
-        # Navegación
-        if platform == "reddit":
-            page.go("/dashboard/reddit")
-        elif platform == "mastodon":
-            page.go("/dashboard/mastodon")
-        elif platform == "facebook":
-            page.go("/dashboard/facebook")
-        else:
-            page.go("/login") 
-        
-        # CORRECCIÓN: Creamos y asignamos el SnackBar directamente
+        # Feedback visual
         page.snack_bar = ft.SnackBar(
-            content=ft.Text(f"Cargando dashboard de: {platform.capitalize()}", style=ft.TextStyle(color=Colors.WHITE)),
+            content=ft.Text(f"Cargando dashboard de: {platform.capitalize()}..."),
             bgcolor=Colors.TEAL_700
         )
         page.snack_bar.open = True
@@ -52,19 +42,15 @@ def create_social_select_view(page: ft.Page) -> ft.View:
             height=200,
         )
 
-    # --- Checkbox para traducción ---
-    translate_checkbox = ft.Checkbox(label="Traducir comentarios (más lento)", value=True)
-
     # --- 2. Función Scraper corregida ---
     def run_scrapers_and_show_log(e):
         if page.data and "run_all_scrapers_func" in page.data:
             run_func = page.data["run_all_scrapers_func"]
-            # Pasar el valor del checkbox a la función
-            run_func(e, translate_checkbox.value) 
+            run_func(e) 
             
             # CORRECCIÓN: Creamos y asignamos el SnackBar directamente
             page.snack_bar = ft.SnackBar(
-                content=ft.Text("Iniciando actualización en segundo plano... (Revisa la terminal)", style=ft.TextStyle(color=Colors.WHITE)),
+                content=ft.Text("Iniciando actualización en segundo plano... (Revisa la terminal)"),
                 bgcolor=Colors.TEAL_700
             )
             page.snack_bar.open = True
@@ -74,18 +60,25 @@ def create_social_select_view(page: ft.Page) -> ft.View:
             print("Error: La función 'run_all_scrapers_func' no está en 'page.data'.")
             # CORRECCIÓN: SnackBar de error
             page.snack_bar = ft.SnackBar(
-                content=ft.Text("¡Error! No se pudo iniciar el scrape. Reinicia la app.", style=ft.TextStyle(color=Colors.WHITE)),
+                content=ft.Text("¡Error! No se pudo iniciar el scrape. Reinicia la app."),
                 bgcolor=Colors.RED_700
             )
             page.snack_bar.open = True
             page.update()
 
-    # --- Layout de la Vista ---
+    # --- LAYOUT PRINCIPAL ---
     return ft.View(
         "/social_select",
         [
-            ft.AppBar(title=ft.Text("🌐 Selecciona tu Fuente de Datos", style=ft.TextStyle(color=Colors.WHITE)), bgcolor=Colors.TEAL_700),
+            ft.AppBar(title=ft.Text("🌐 Selecciona tu Fuente de Datos"), bgcolor=Colors.TEAL_700),
             ft.Container(
+                image=ft.DecorationImage(
+                    src="assets/login_bg.png", 
+                    fit=ft.ImageFit.COVER,
+                    opacity=0.05
+                ),
+                expand=True,
+                bgcolor=Colors.BLUE_GREY_50,
                 content=ft.Column(
                     [
                         ft.Text("¿Qué red social deseas analizar hoy?", size=32, weight=ft.FontWeight.BOLD),
@@ -119,39 +112,27 @@ def create_social_select_view(page: ft.Page) -> ft.View:
                         
                         ft.Container(height=50),
                         
-                        # --- Contenedor para botones y checkbox ---
-                        ft.Column(
+                        ft.Row(
                             [
-                                translate_checkbox,
-                                ft.Row(
-                                    [
-                                        ft.TextButton(
-                                            "Volver al Login",
-                                            icon=Icons.ARROW_BACK, 
-                                            on_click=lambda e: page.go("/login")
-                                        ),
-                                        ft.ElevatedButton(
-                                            "Actualizar Datos",
-                                            icon=Icons.REFRESH,
-                                            on_click=run_scrapers_and_show_log,
-                                            bgcolor=Colors.TEAL_700,
-                                            color=Colors.WHITE,       
-                                        )
-                                    ],
-                                    alignment=ft.MainAxisAlignment.CENTER,
-                                    spacing=20 
+                                ft.TextButton(
+                                    "Volver al Login",
+                                    icon=Icons.ARROW_BACK, 
+                                    on_click=lambda e: page.go("/login")
+                                ),
+                                ft.ElevatedButton(
+                                    "Actualizar Datos",
+                                    icon=Icons.REFRESH,
+                                    on_click=run_scrapers_and_show_log,
+                                    bgcolor=Colors.TEAL_700,
+                                    color=Colors.WHITE,       
                                 )
                             ],
-                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                            spacing=20
+                            alignment=ft.MainAxisAlignment.CENTER,
+                            spacing=20 
                         )
-                    ],
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    spacing=20
-                ),
-                padding=50
+                    ]
+                )
             )
         ],
-        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-        vertical_alignment=ft.MainAxisAlignment.CENTER,
+        padding=0
     )

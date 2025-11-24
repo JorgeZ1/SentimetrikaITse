@@ -132,6 +132,7 @@ def create_dashboard_view(page: ft.Page):
         controls=[
             ft.Column(
                 [
+                    # --- ¡AQUÍ ESTÁ EL CAMBIO! ---
                     ft.Row(
                         [
                             ft.IconButton(
@@ -146,7 +147,9 @@ def create_dashboard_view(page: ft.Page):
                         ],
                         vertical_alignment=ft.CrossAxisAlignment.CENTER
                     ),
-                    main_content,
+                    # --- FIN DEL CAMBIO ---
+                    
+                    tabs_control, 
                 ],
                 spacing=25,
                 expand=True,

@@ -1,146 +1,167 @@
 import facebook
 import os
+from pathlib import Path  # <--- El GPS
 from dotenv import load_dotenv
-from .database import SessionLocal, Publication, Comment
-from typing import List, Dict, Any
 
-load_dotenv()
+# --- CAMBIO IMPORTANTE: Importamos la DB de Postgres ---
+from .database import SessionLocal, Publication, Comment
+
+# --- 1. CONFIGURACIÓN DEL GPS Y ENV ---
+current_file = Path(__file__).resolve()
+# Subimos 3 niveles: views -> mi_dashboard -> RAIZ
+project_root = current_file.parent.parent.parent
+env_path = project_root / '.env'
+
+print(f"🔍 [System] Buscando .env en: {env_path}")
+load_dotenv(dotenv_path=env_path)
+
+# Verificación rápida en consola
+if os.getenv("PAGE_ACCESS_TOKEN"):
+    print("✅ [System] Token detectado en variables de entorno.")
+else:
+    print("❌ [System] ALERTA: El token sigue siendo None.")
 
 # Credenciales
 PAGE_ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN")
 PAGE_ID = os.getenv("PAGE_ID")
 
-from Api.sentiment_utils import _mapear_sentimiento
+def _mapear_sentimiento_fb(label_original: str) -> str:
+    """Convierte etiquetas del modelo a formato estándar"""
+    label = label_original.upper()
+    if label in ['POSITIVE', 'LABEL_2', 'POS']: return 'positive'
+    if label in ['NEGATIVE', 'LABEL_0', 'NEG']: return 'negative'
+    return 'neutral'
 
 def run_facebook_scrape_opt(progress_callback, translator, sentiment_analyzer):
     """
-    Versión PostgreSQL optimizada con procesamiento por lotes.
+    Versión PostgreSQL optimizada.
     """
+    
+    # Validaciones iniciales
     if not PAGE_ACCESS_TOKEN or not PAGE_ID:
-        progress_callback("❌ Error: Faltan credenciales en .env")
+        progress_callback("❌ Error: Faltan las credenciales PAGE_ACCESS_TOKEN o PAGE_ID en el archivo .env")
         return
 
     progress_callback("Iniciando conexión con la API Graph de Facebook...")
+    
+    # 1. Conexión a Facebook
     try:
         graph = facebook.GraphAPI(access_token=PAGE_ACCESS_TOKEN)
+        # Prueba de conexión (pedimos nombre de la página)
         page_info = graph.get_object(id=PAGE_ID, fields='name')
         progress_callback(f"✅ Conectado a página: {page_info.get('name', 'Desconocida')}")
+    except facebook.GraphAPIError as e:
+        progress_callback(f"❌ Error API Facebook: {e.message}")
+        return
     except Exception as e:
-        progress_callback(f"❌ Error de conexión: {e}")
+        progress_callback(f"❌ Error de Red/Conexión: {e}")
         return
 
+    # 2. Iniciar Sesión de Base de Datos (PostgreSQL)
     session = SessionLocal()
     nuevos_comentarios_totales = 0
     nuevas_publicaciones_totales = 0
 
     try:
         progress_callback(f"Obteniendo feed de la página {PAGE_ID}...")
-        posts_data = graph.get_connections(id=PAGE_ID, connection_name='feed', fields='id,message,created_time').get('data', [])
+        posts = graph.get_connections(id=PAGE_ID, connection_name='feed', fields='id,message,created_time')
         
-        if not posts_data:
+        if 'data' not in posts:
             progress_callback("⚠️ No se encontraron publicaciones.")
             return
 
-        post_ids = [post['id'] for post in posts_data]
-
-        # --- GESTIÓN DE PUBLICACIONES (BATCH) ---
-        existing_pubs_query = session.query(Publication.id).filter(Publication.id.in_(post_ids))
-        existing_pub_ids = {pub_id[0] for pub_id in existing_pubs_query}
-
-        new_pubs_to_add = [
-            Publication(
-                id=post['id'],
-                red_social="Facebook",
-                title_original=post.get('message', 'Publicación multimedia/sin texto'),
-                title_translated=post.get('message', 'Publicación multimedia/sin texto')
-            )
-            for post in posts_data if post['id'] not in existing_pub_ids
-        ]
-
-        if new_pubs_to_add:
-            session.bulk_save_objects(new_pubs_to_add)
-            nuevas_publicaciones_totales = len(new_pubs_to_add)
-            progress_callback(f"  └ +{nuevas_publicaciones_totales} publicaciones nuevas agregadas.")
+        for post in posts['data']:
+            post_id = post['id']
+            # Si no hay mensaje, usamos un placeholder
+            post_content = post.get('message', 'Publicación multimedia/sin texto')
             
-        # --- GESTIÓN DE COMENTARIOS (BATCH) ---
-        all_comments_to_process: List[Dict[str, Any]] = []
-        progress_callback("Descargando comentarios de todas las publicaciones...")
-        for post_id in post_ids:
-            comments_data = graph.get_connections(id=post_id, connection_name='comments', fields='id,message,from').get('data', [])
-            for comment in comments_data:
-                if comment.get('message'):
-                    all_comments_to_process.append({
-                        'publication_id': post_id,
-                        'author': comment.get('from', {}).get('name', 'Anónimo'),
-                        'text_original': comment['message']
-                    })
+            progress_callback(f"Procesando Post ID: {post_id}...")
 
-        if not all_comments_to_process:
-            progress_callback("No se encontraron comentarios para procesar.")
-            return
+            # --- GESTIÓN DE PUBLICACIÓN (ORM) ---
+            # Verificamos si el post ya existe en Postgres
+            existing_pub = session.query(Publication).filter_by(id=post_id).first()
             
-        progress_callback("Verificando comentarios duplicados...")
-        query = session.query(Comment.publication_id, Comment.author, Comment.text_original).filter(Comment.publication_id.in_(post_ids))
-        existing_comment_tuples = {(p_id, author, text) for p_id, author, text in query}
-        
-        unique_comments = [c for c in all_comments_to_process if (c['publication_id'], c['author'], c['text_original']) not in existing_comment_tuples]
+            if not existing_pub:
+                # Crear nueva publicación
+                new_pub = Publication(
+                    id=post_id,
+                    red_social="Facebook",
+                    title_original=post_content,
+                    title_translated=post_content # Asumimos mismo título si no se traduce el post
+                )
+                session.add(new_pub)
+                # Hacemos commit parcial para asegurar que la ID exista antes de meter comentarios
+                session.commit() 
+            else:
+                # Opcional: Actualizar contenido si cambió (aquí lo omitimos por velocidad)
+                pass
 
-        if not unique_comments:
-            progress_callback("No hay comentarios nuevos para analizar.")
-            return
-
-        progress_callback(f"Procesando {len(unique_comments)} comentarios únicos...")
-        
-        texts_to_translate = [c['text_original'] for c in unique_comments]
-        translated_texts = {}
-        if translator and texts_to_translate:
-            try:
-                results = translator(texts_to_translate, max_length=512, batch_size=16)
-                for i, res in enumerate(results):
-                    translated_texts[texts_to_translate[i]] = res['translation_text']
-            except Exception as e:
-                progress_callback(f"❌ Error traduciendo comentarios: {e}")
-
-        texts_for_sentiment = [translated_texts.get(c['text_original'], c['text_original']) for c in unique_comments]
-        sentiments = []
-        if sentiment_analyzer and texts_for_sentiment:
-            try:
-                sentiments = sentiment_analyzer(texts_for_sentiment, batch_size=16, truncation=True)
-            except Exception as e:
-                progress_callback(f"❌ Error analizando sentimientos: {e}")
-
-        new_comments_to_add: List[Comment] = []
-        for i, comment_data in enumerate(unique_comments):
-            sentiment_label = 'neutral'
-            sentiment_score = '0.0'
+            # --- GESTIÓN DE COMENTARIOS ---
+            nuevos_comentarios_post = 0
+            comments = graph.get_connections(id=post_id, connection_name='comments', fields='id,message,from', summary=True)
             
-            if i < len(sentiments):
-                s_res = sentiments[i]
-                sentiment_label = _mapear_sentimiento(s_res['label'])
-                sentiment_score = str(round(s_res.get('score', 0.0), 4))
+            for comment in comments.get('data', []):
+                try:
+                    comment_text_orig = comment.get('message', '')
+                    comment_author = comment.get('from', {}).get('name', 'Anónimo')
+
+                    if not comment_text_orig:
+                        continue
+
+                    # Verificamos duplicados en DB
+                    # Buscamos si ya existe un comentario con el mismo texto, autor y post_id
+                    # (Postgres es muy rápido haciendo esto)
+                    existing_comment = session.query(Comment).filter_by(
+                        publication_id=post_id,
+                        text_original=comment_text_orig,
+                        author=comment_author
+                    ).first()
+
+                    if existing_comment:
+                        continue # Ya existe, saltamos
+
+                    # --- TRADUCCIÓN Y ANÁLISIS ---
+                    text_translated = comment_text_orig
+                    
+                    # Intento de traducción
+                    try:
+                        trans_res = translator(comment_text_orig, max_length=512)
+                        if trans_res and 'translation_text' in trans_res[0]:
+                            text_translated = trans_res[0]['translation_text']
+                    except Exception:
+                        pass # Fallback al original si falla traducción
+
+                    # Análisis de sentimiento
+                    sentiment_res = sentiment_analyzer(text_translated[:512])[0]
+                    sentiment_label = _mapear_sentimiento_fb(sentiment_res['label'])
+                    sentiment_score = str(round(sentiment_res.get('score', 0.0), 4))
+
+                    # Crear objeto Comentario
+                    new_comment = Comment(
+                        publication_id=post_id,
+                        author=comment_author,
+                        text_original=comment_text_orig,
+                        text_translated=text_translated,
+                        sentiment_label=sentiment_label,
+                        sentiment_score=sentiment_score
+                    )
+                    
+                    session.add(new_comment)
+                    nuevos_comentarios_post += 1
+
+                except Exception as e_comm:
+                    print(f"Error en comentario individual: {e_comm}")
+                    continue
+
+            # Commit de los comentarios de ESTE post
+            if nuevos_comentarios_post > 0:
+                session.commit()
+                nuevos_comentarios_totales += nuevos_comentarios_post
+                progress_callback(f"  └ +{nuevos_comentarios_post} comentarios guardados.")
             
-            text_translated = translated_texts.get(comment_data['text_original'], comment_data['text_original'])
-            
-            new_comments_to_add.append(Comment(
-                publication_id=comment_data['publication_id'],
-                author=comment_data['author'],
-                text_original=comment_data['text_original'],
-                text_translated=text_translated,
-                sentiment_label=sentiment_label,
-                sentiment_score=sentiment_score
-            ))
-
-        if new_comments_to_add:
-            session.bulk_save_objects(new_comments_to_add)
-            nuevos_comentarios_totales = len(new_comments_to_add)
-            progress_callback(f"  └ +{nuevos_comentarios_totales} comentarios nuevos guardados.")
-
-        progress_callback("Guardando todos los cambios en la base de datos...")
-        session.commit()
-
     except Exception as e:
         session.rollback()
-        progress_callback(f"❌ Error crítico en el proceso: {e}")
+        progress_callback(f"❌ Error crítico durante el proceso: {e}")
     finally:
-        session.close()
-        progress_callback(f"\n✅ Finalizado. Nuevas publicaciones: {nuevas_publicaciones_totales}, Total comentarios nuevos: {nuevos_comentarios_totales}")  
+        session.close() # IMPORTANTE: Cerrar conexión
+        progress_callback(f"\n✅ Finalizado. Total comentarios nuevos: {nuevos_comentarios_totales}")  
