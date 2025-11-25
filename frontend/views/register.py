@@ -53,17 +53,17 @@ def create_register_view(page: ft.Page):
 
     def register_action(e):
         if not email.value or not password.value or not confirm_password.value:
-            error_text.value = "⚠️ Todos los campos son obligatorios"
+            error_text.value = "Todos los campos son obligatorios"
         elif not is_valid_email(email.value):
-            error_text.value = "⚠️ Correo electrónico no válido"
+            error_text.value = "Correo electrónico no válido"
         elif not is_valid_password(password.value):
-            error_text.value = "⚠️ La contraseña debe tener al menos 8 caracteres, incluir letras y números"
+            error_text.value = "La contraseña debe tener al menos 8 caracteres, incluir letras y números"
         elif password.value != confirm_password.value:
-            error_text.value = "⚠️ Las contraseñas no coinciden"
+            error_text.value = "Las contraseñas no coinciden"
         elif register_user(email.value, password.value):
             page.go("/login")
         else:
-            error_text.value = "⚠️ El usuario ya existe"
+            error_text.value = "El usuario ya existe"
         page.update()
 
     # ---------- Estructura de la Vista con imagen de fondo ----------
@@ -73,7 +73,7 @@ def create_register_view(page: ft.Page):
             # Container con imagen de fondo
             ft.Container(
                 image=ft.DecorationImage(
-                    src="frontend/assets/register.jpg",
+                    src="/register.jpg",
                     fit=ft.ImageFit.COVER,
                     opacity=0.4  # Opacidad para que se vea mejor el formulario
                 ),
@@ -93,7 +93,7 @@ def create_register_view(page: ft.Page):
                     ),
                     content=ft.Column(
                         [
-                            ft.Image(src="frontend/assets/Sentimetrika.png", width=120),
+                            ft.Image(src="/Sentimetrika.png", width=120),
                             ft.Text(
                                 "Crea tu cuenta",
                                 style=ft.TextStyle(size=28, weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY),

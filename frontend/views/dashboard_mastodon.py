@@ -53,20 +53,20 @@ SHADOW_CARD = ft.BoxShadow(
 
 def generate_pdf_report(page: ft.Page, publications: List[Publication], comments_map: Dict[str, List[Comment]]):
     if not publications:
-        show_snackbar(page, "⚠️ No hay publicaciones para generar el reporte.", is_error=True)
+        show_snackbar(page, "No hay publicaciones para generar el reporte.", is_error=True)
         return
     try:
-        show_snackbar(page, "📄 Generando PDF...", is_error=False)
+        show_snackbar(page, "Generando PDF...", is_error=False)
         generator = PDFReportGenerator()
         file_path = generator.generate_report("Mastodon", publications, comments_map)
-        show_snackbar(page, f"✅ Reporte guardado: {os.path.basename(file_path)}")
+        show_snackbar(page, f"Reporte guardado: {os.path.basename(file_path)}")
         try:
             os.startfile(os.path.dirname(file_path))
         except:
             pass 
     except Exception as e:
         print(f"Error PDF: {e}")
-        show_snackbar(page, f"❌ Error generando reporte: {str(e)}", is_error=True)
+        show_snackbar(page, f"Error generando reporte: {str(e)}", is_error=True)
 
 def get_mastodon_data() -> Tuple[List[Publication], Dict[str, List[Comment]]]:
     session = SessionLocal()
@@ -163,9 +163,9 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
         if delete_publication_by_id(post_id):
             refresh_data_objects()
             render_publications()
-            show_snackbar(page, "✅ Toot eliminado")
+            show_snackbar(page, "Toot eliminado")
         else:
-            show_snackbar(page, "❌ Error al eliminar", is_error=True)
+            show_snackbar(page, "Error al eliminar", is_error=True)
 
     # --- Lógica de Tarjeta (Estilo Mastodon) ---
     def create_post_card(post: Publication, comment_count: int):
@@ -215,7 +215,7 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
                     ft.Column([
                         ft.Text("Mastodon Toot", size=12, color="onSurfaceVariant", weight=ft.FontWeight.BOLD),
                         ft.Container(
-                            content=ft.Text("Ver en instancia ↗", size=10, color=ACCENT_COLOR, weight="bold"),
+                            content=ft.Text("Ver en instancia", size=10, color=ACCENT_COLOR, weight="bold"),
                             on_click=lambda _: page.launch_url(post_url),
                             padding=2,
                             border_radius=4,
@@ -263,11 +263,11 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
         if page.theme_mode == ft.ThemeMode.LIGHT:
             page.theme_mode = ft.ThemeMode.DARK
             theme_icon.icon = Icons.LIGHT_MODE
-            show_snackbar(page, "🌙 Modo Oscuro")
+            show_snackbar(page, "Modo Oscuro")
         else:
             page.theme_mode = ft.ThemeMode.LIGHT
             theme_icon.icon = Icons.DARK_MODE 
-            show_snackbar(page, "☀️ Modo Claro")
+            show_snackbar(page, "Modo Claro")
         page.update()
 
     initial_icon = Icons.DARK_MODE if page.theme_mode == ft.ThemeMode.LIGHT else Icons.LIGHT_MODE
@@ -280,7 +280,7 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
         # 1. Obtener IDs del campo de texto (Memoria)
         raw_text = mastodon_ids_input.value.strip()
         if not raw_text:
-            show_snackbar(page, "⚠️ Pega al menos un ID en la configuración.", is_error=True)
+            show_snackbar(page, "Pega al menos un ID en la configuración.", is_error=True)
             show_drawer(None) # Abrir drawer para que vea dónde
             return
 
@@ -292,7 +292,7 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
         ]
 
         if not target_ids_list:
-            show_snackbar(page, "❌ No se encontraron IDs numéricos válidos.", is_error=True)
+            show_snackbar(page, "No se encontraron IDs numéricos válidos.", is_error=True)
             return
 
         # Mostrar Progreso
@@ -308,7 +308,7 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
             def on_progress_update(msg):
                 print(f"[Mastodon] {msg}")
                 progress_text.value = msg
-                if "Error" in msg or "❌" in msg:
+                if "Error" in msg:
                     status["has_error"] = True
                     progress_bar.color = ft.Colors.RED
                     progress_text.color = ft.Colors.RED
@@ -346,9 +346,9 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
                     pass
                 
                 if status["has_error"]:
-                    show_snackbar(page, "❌ Proceso terminado con errores", is_error=True)
+                    show_snackbar(page, "Proceso terminado con errores", is_error=True)
                 else:
-                    show_snackbar(page, "✅ Datos actualizados")
+                    show_snackbar(page, "Datos actualizados")
 
         threading.Thread(target=_thread_target, daemon=True).start()
 
@@ -357,7 +357,7 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
         refresh_data_objects()
         render_publications()
         close_drawer()
-        show_snackbar(page, f"✅ Vaciado ({count} eliminados)")
+        show_snackbar(page, f"Vaciado ({count} eliminados)")
 
     # --- 6. Definición del Drawer ---
     config_drawer = ft.NavigationDrawer(

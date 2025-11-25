@@ -38,7 +38,7 @@ def create_login_view(page: ft.Page):
             page.go("/social_select") 
             # ---------------------------------------------------------
         else:
-            error_text.value = "⚠️ Usuario o contraseña incorrectos"
+            error_text.value = "Usuario o contraseña incorrectos"
             page.update()
 
     return ft.View(
@@ -50,7 +50,7 @@ def create_login_view(page: ft.Page):
                     ft.Container(
                         expand=True,
                         content=ft.Image(
-                            src="frontend/assets/login_bg.png",
+                            src="/login_bg.png",
                             fit=ft.ImageFit.COVER,
                             expand=True
                         ),
@@ -62,7 +62,7 @@ def create_login_view(page: ft.Page):
                         bgcolor=BG_CARD,
                         content=ft.Column(
                             [
-                                ft.Image(src="frontend/assets/Sentimetrika.png", width=120),
+                                ft.Image(src="/Sentimetrika.png", width=120),
                                 ft.Text(
                                     "¡Bienvenido de nuevo!", 
                                     style=ft.TextStyle(size=24, weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY)

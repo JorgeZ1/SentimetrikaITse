@@ -53,20 +53,20 @@ SHADOW_CARD = ft.BoxShadow(
 
 def generate_pdf_report(page: ft.Page, publications: List[Publication], comments_map: Dict[str, List[Comment]]):
     if not publications:
-        show_snackbar(page, "⚠️ No hay publicaciones para generar el reporte.", is_error=True)
+        show_snackbar(page, "No hay publicaciones para generar el reporte.", is_error=True)
         return
     try:
-        show_snackbar(page, "📄 Generando PDF...", is_error=False)
+        show_snackbar(page, "Generando PDF...", is_error=False)
         generator = PDFReportGenerator()
         file_path = generator.generate_report("Facebook", publications, comments_map)
-        show_snackbar(page, f"✅ Reporte guardado: {os.path.basename(file_path)}")
+        show_snackbar(page, f"Reporte guardado: {os.path.basename(file_path)}")
         try:
             os.startfile(os.path.dirname(file_path))
         except:
             pass 
     except Exception as e:
         print(f"Error PDF: {e}")
-        show_snackbar(page, f"❌ Error generando reporte: {str(e)}", is_error=True)
+        show_snackbar(page, f"Error generando reporte: {str(e)}", is_error=True)
 
 def get_facebook_data() -> Tuple[List[Publication], Dict[str, List[Comment]]]:
     session = SessionLocal()
@@ -151,9 +151,9 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
         if delete_publication_by_id(post_id):
             refresh_data_objects()
             render_publications()
-            show_snackbar(page, "✅ Publicación eliminada")
+            show_snackbar(page, "Publicación eliminada")
         else:
-            show_snackbar(page, "❌ Error al eliminar", is_error=True)
+            show_snackbar(page, "Error al eliminar", is_error=True)
 
     # --- Lógica de Tarjeta ---
     def create_post_card(post: Publication, comment_count: int):
@@ -194,7 +194,7 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
                     ft.Container(content=ft.Icon(Icons.FACEBOOK, color=FACEBOOK_COLOR, size=24), padding=5, bgcolor="#E7F3FF", border_radius=50),
                     ft.Column([
                         ft.Text("Facebook Post", size=12, color="onSurfaceVariant", weight=ft.FontWeight.BOLD),
-                        ft.Text("Ver original ↗", size=10, color=ACCENT_COLOR, weight="bold") 
+                        ft.Text("Ver original", size=10, color=ACCENT_COLOR, weight="bold") 
                     ], spacing=2)
                 ], spacing=10),
                 
@@ -237,7 +237,7 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
         new_page_id = page_id_input.value.strip()
         
         if not new_token and not new_page_id:
-            show_snackbar(page, "⚠️ Ingresa datos para guardar", is_error=True)
+            show_snackbar(page, "Ingresa datos para guardar", is_error=True)
             return
 
         env_path = Path('.env')
@@ -259,7 +259,7 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
             
             env_path.write_text("\n".join(clean_lines))
             
-            show_snackbar(page, "✅ Credenciales guardadas y archivo limpiado.")
+            show_snackbar(page, "Credenciales guardadas y archivo limpiado.")
             token_input.value = ""
             page_id_input.value = ""
             page.update()
@@ -275,7 +275,7 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
         current_token = os.environ.get('PAGE_ACCESS_TOKEN')
         
         if not current_id or not current_token:
-             show_snackbar(page, "⚠️ Faltan credenciales. Configura y guarda primero.", is_error=True)
+             show_snackbar(page, "Faltan credenciales. Configura y guarda primero.", is_error=True)
              return
 
         # Reiniciar estado visual de la barra
@@ -298,7 +298,7 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
                 
                 # DETECCIÓN VISUAL DE ERRORES
                 # Si el mensaje contiene "Error" o el icono de cruz, cambiar a ROJO
-                if "Error" in msg or "❌" in msg:
+                if "Error" in msg:
                     status["has_error"] = True
                     progress_bar.color = ft.Colors.RED
                     progress_text.color = ft.Colors.RED
@@ -345,9 +345,9 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
                     pass
                 
                 if status["has_error"]:
-                    show_snackbar(page, "❌ El proceso terminó con errores. Revisa las credenciales.", is_error=True)
+                    show_snackbar(page, "El proceso terminó con errores. Revisa las credenciales.", is_error=True)
                 else:
-                    show_snackbar(page, "✅ Datos actualizados exitosamente")
+                    show_snackbar(page, "Datos actualizados exitosamente")
                 
         threading.Thread(target=_thread_target, daemon=True).start()
 
@@ -356,7 +356,7 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
         refresh_data_objects()
         render_publications()
         close_drawer()
-        show_snackbar(page, f"✅ Vaciado ({count})")
+        show_snackbar(page, f"Vaciado ({count})")
 
     # --- 6. Definición del Drawer ---
     config_drawer = ft.NavigationDrawer(
