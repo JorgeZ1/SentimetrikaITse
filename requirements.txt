@@ -9,4 +9,5 @@ python-dotenv
 tqdm
 psycopg2-binary
 sqlalchemy
-facebook-s
+facebook-sdk
+fpdf2

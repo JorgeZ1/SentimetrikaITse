@@ -1,8 +1,10 @@
 import flet as ft
-from Api.database import SessionLocal, Publication, Comment
+from backend.database import SessionLocal, Publication, Comment
 from flet import Colors
-
 from typing import Dict, List, Any
+import os
+from backend.report_generator import PDFReportGenerator
+from frontend.utils import show_snackbar
 
 # --- Paleta de colores (sin cambios) ---
 BACKGROUND_COLOR: str = "#1f2630"
@@ -17,9 +19,9 @@ def get_sentiment_display(sentiment_data: Dict[str, Any]) -> ft.Row:
     etiqueta: str = sentiment_data.get("etiqueta", "NEUTRAL").upper()
     
     colores: Dict[str, str] = {
-        "POSITIVE": ft.colors.GREEN,
-        "NEGATIVE": ft.colors.RED,
-        "NEUTRAL": ft.colors.GREY
+        "POSITIVE": ft.Colors.GREEN,
+        "NEGATIVE": ft.Colors.RED,
+        "NEUTRAL": ft.Colors.GREY
     }
     iconos: Dict[str, str] = {
         "POSITIVE": ft.Icons.THUMB_UP,
@@ -27,7 +29,7 @@ def get_sentiment_display(sentiment_data: Dict[str, Any]) -> ft.Row:
         "NEUTRAL": ft.Icons.CIRCLE_OUTLINED
     }
     
-    color: str = colores.get(etiqueta, ft.colors.GREY)
+    color: str = colores.get(etiqueta, ft.Colors.GREY)
     icono: str = iconos.get(etiqueta, ft.Icons.HELP)
     
     return ft.Row(
@@ -37,6 +39,16 @@ def get_sentiment_display(sentiment_data: Dict[str, Any]) -> ft.Row:
         ],
         spacing=5,
     )
+
+def generate_single_pdf_report(page: ft.Page, publication: Publication, comments: List[Comment]):
+    """Genera el reporte PDF para una sola publicación y notifica al usuario"""
+    try:
+        generator = PDFReportGenerator()
+        file_path = generator.generate_single_publication_report(publication, comments)
+        
+        show_snackbar(page, f"✅ Reporte generado: {os.path.basename(file_path)}")
+    except Exception as e:
+        show_snackbar(page, f"❌ Error generando reporte: {str(e)}", is_error=True)
 
 # --- Vista de comentarios (CON MODIFICACIONES) ---
 def create_comments_view(page: ft.Page, pub_id: str) -> ft.View:
@@ -58,13 +70,13 @@ def create_comments_view(page: ft.Page, pub_id: str) -> ft.View:
         session.close()
 
     lista_de_comentarios: List[ft.Container] = []
-    titulo_publicacion: ft.Text = ft.Text("Publicación no encontrada", style=ft.TextStyle(color=ft.colors.RED, text_align=ft.TextAlign.CENTER))
+    titulo_publicacion: ft.Text = ft.Text("Publicación no encontrada", style=ft.TextStyle(color=ft.Colors.RED), text_align=ft.TextAlign.CENTER)
 
     if publicacion_actual:
         titulo_texto: str = publicacion_actual.title_translated or publicacion_actual.title_original or "Título no encontrado"
         titulo_publicacion = ft.Text(
             titulo_texto,
-            style=ft.TextStyle(size=20, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE), 
+            style=ft.TextStyle(size=20, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
             text_align=ft.TextAlign.CENTER
         )
 
@@ -95,7 +107,7 @@ def create_comments_view(page: ft.Page, pub_id: str) -> ft.View:
             )
             lista_de_comentarios.append(tarjeta_comentario)
     else:
-        titulo_publicacion = ft.Text(f"Error: No se encontró la publicación con ID {pub_id}", style=ft.TextStyle(color=ft.colors.RED))
+        titulo_publicacion = ft.Text(f"Error: No se encontró la publicación con ID {pub_id}", style=ft.TextStyle(color=ft.Colors.RED))
 
     return ft.View(
         f"/comments/{pub_id}",
@@ -107,8 +119,16 @@ def create_comments_view(page: ft.Page, pub_id: str) -> ft.View:
             leading=ft.IconButton(
                 icon=ft.Icons.ARROW_BACK,
                 icon_color=PRIMARY_TEXT_COLOR,
-                on_click=lambda _: page.go("/dashboard")
-            )
+                on_click=lambda _: page.go(f"/dashboard/{publicacion_actual.red_social.lower()}") if publicacion_actual else page.go("/social_select") # Volver al dashboard anterior
+            ),
+            actions=[
+                ft.IconButton(
+                    icon=ft.Icons.PICTURE_AS_PDF,
+                    icon_color=PRIMARY_TEXT_COLOR,
+                    on_click=lambda _: generate_single_pdf_report(page, publicacion_actual, comentarios_actuales),
+                    tooltip="Generar Reporte PDF"
+                )
+            ]
         ),
         controls=[
             ft.Container(

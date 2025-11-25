@@ -1,23 +1,22 @@
 # views/register.py
 import flet as ft
 import re
-from mi_dashboard.auth import register_user
-from mi_dashboard.theme import TEXT_PRIMARY, PRIMARY, ACCENT, TEXT_ON_PRIMARY
+from frontend.auth import register_user
+from frontend.theme import TEXT_PRIMARY, PRIMARY, ACCENT, TEXT_ON_PRIMARY, BG_CARD, BG_DARK
 
 def create_register_view(page: ft.Page):
     """
-    Crea la vista de registro, centrada y con confirmación de contraseña, 
-    utilizando un diseño de tarjeta (card).
+    Crea la vista de registro con imagen de fondo y formulario centrado.
     """
     
-    # Controles de la interfaz de usuario con colores claros
+    # Controles de la interfaz de usuario
     email = ft.TextField(
         label="Correo electrónico",
         width=300,
         border_radius=8,
         border_color=PRIMARY,
-        bgcolor=ft.Colors.WHITE,
-        color=ft.Colors.BLACK,
+        bgcolor=BG_DARK,
+        color=TEXT_PRIMARY,
     )
     password = ft.TextField(
         label="Contraseña",
@@ -26,8 +25,8 @@ def create_register_view(page: ft.Page):
         width=300,
         border_radius=8,
         border_color=PRIMARY,
-        bgcolor=ft.Colors.WHITE,
-        color=ft.Colors.BLACK,
+        bgcolor=BG_DARK,
+        color=TEXT_PRIMARY,
     )
     confirm_password = ft.TextField(
         label="Confirmar contraseña",
@@ -36,8 +35,8 @@ def create_register_view(page: ft.Page):
         width=300,
         border_radius=8,
         border_color=PRIMARY,
-        bgcolor=ft.Colors.WHITE,
-        color=ft.Colors.BLACK,
+        bgcolor=BG_DARK,
+        color=TEXT_PRIMARY,
     )
     error_text = ft.Text("", style=ft.TextStyle(color=ACCENT))
     
@@ -67,31 +66,34 @@ def create_register_view(page: ft.Page):
             error_text.value = "⚠️ El usuario ya existe"
         page.update()
 
-    # ---------- Estructura de la Vista con la tarjeta ----------
+    # ---------- Estructura de la Vista con imagen de fondo ----------
     return ft.View(
         "/register",
-        bgcolor=ft.Colors.WHITE,
         controls=[
-            # Contenedor para centrar el formulario
+            # Container con imagen de fondo
             ft.Container(
-                alignment=ft.alignment.center,
+                image=ft.DecorationImage(
+                    src="frontend/assets/register.jpg",
+                    fit=ft.ImageFit.COVER,
+                    opacity=0.4  # Opacidad para que se vea mejor el formulario
+                ),
                 expand=True,
-                # El formulario como una tarjeta
+                alignment=ft.alignment.center,
+                # Formulario centrado como tarjeta
                 content=ft.Container(
                     width=400,
-                    height=550,
                     padding=40,
-                    bgcolor=ft.Colors.WHITE,
+                    bgcolor=BG_CARD,
                     border_radius=20,
                     shadow=ft.BoxShadow(
                         spread_radius=1,
                         blur_radius=15,
-                        color=ft.Colors.with_opacity(0.2, ft.Colors.BLACK),
+                        color=ft.Colors.with_opacity(0.3, ft.Colors.BLACK),
                         offset=ft.Offset(0, 0),
                     ),
-                    # El contenido dentro de la tarjeta
                     content=ft.Column(
                         [
+                            ft.Image(src="frontend/assets/Sentimetrika.png", width=120),
                             ft.Text(
                                 "Crea tu cuenta",
                                 style=ft.TextStyle(size=28, weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY),
@@ -124,4 +126,5 @@ def create_register_view(page: ft.Page):
                 ),
             )
         ],
+        padding=0
     )

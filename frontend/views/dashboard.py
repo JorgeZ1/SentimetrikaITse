@@ -1,5 +1,5 @@
 import flet as ft
-from mi_dashboard.utils import procesar_y_agrupar_publicaciones, get_impact_icon
+from frontend.utils import procesar_y_agrupar_publicaciones, get_impact_icon
 from flet import Icons, Colors
 import threading
 from typing import List, Dict, Any

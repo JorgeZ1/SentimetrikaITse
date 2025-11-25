@@ -1,6 +1,6 @@
 import flet as ft
-from mi_dashboard.auth import authenticate
-from mi_dashboard.theme import PRIMARY, ACCENT, TEXT_PRIMARY, TEXT_ON_PRIMARY, BG_DARK
+from frontend.auth import authenticate
+from frontend.theme import PRIMARY, ACCENT, TEXT_PRIMARY, TEXT_ON_PRIMARY, BG_DARK, BG_LIGHT, BG_CARD
 # Se asume que estos módulos (auth.py, theme.py) están definidos en tu proyecto.
 
 def create_login_view(page: ft.Page):
@@ -10,8 +10,8 @@ def create_login_view(page: ft.Page):
         border_color=PRIMARY,
         width=320,
         filled=True,
-        fill_color=ft.Colors.GREY_100,
-        color=ft.Colors.BLACK
+        fill_color=BG_DARK,
+        color=TEXT_PRIMARY
     )
     password = ft.TextField(
         label="Contraseña",
@@ -21,8 +21,8 @@ def create_login_view(page: ft.Page):
         border_color=PRIMARY,
         width=320,
         filled=True,
-        fill_color=ft.Colors.GREY_100,
-        color=ft.Colors.BLACK
+        fill_color=BG_DARK,
+        color=TEXT_PRIMARY
     )
     remember_me = ft.Checkbox(
         label="Recordar contraseña",
@@ -50,7 +50,7 @@ def create_login_view(page: ft.Page):
                     ft.Container(
                         expand=True,
                         content=ft.Image(
-                            src="login_bg.png",
+                            src="frontend/assets/login_bg.png",
                             fit=ft.ImageFit.COVER,
                             expand=True
                         ),
@@ -59,10 +59,10 @@ def create_login_view(page: ft.Page):
                     ft.Container(
                         width=450,
                         padding=40,
-                        bgcolor="white",
+                        bgcolor=BG_CARD,
                         content=ft.Column(
                             [
-                                ft.Image(src="Sentimetrika.png", width=120),
+                                ft.Image(src="frontend/assets/Sentimetrika.png", width=120),
                                 ft.Text(
                                     "¡Bienvenido de nuevo!", 
                                     style=ft.TextStyle(size=24, weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY)

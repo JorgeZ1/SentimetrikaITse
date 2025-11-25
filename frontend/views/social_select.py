@@ -1,7 +1,7 @@
 import flet as ft
 from flet import Icons, FontWeight, TextThemeStyle, BoxShadow, Offset
 from typing import Callable
-from mi_dashboard.theme import *
+from frontend.theme import *
 
 def create_social_select_view(page: ft.Page) -> ft.View:
 
@@ -98,7 +98,7 @@ def create_social_select_view(page: ft.Page) -> ft.View:
             ),
             ft.Container(
                 image=ft.DecorationImage(
-                    src="assets/login_bg.png", 
+                    src="frontend/assets/login_bg.png", 
                     fit=ft.ImageFit.COVER,
                     opacity=0.03
                 ),

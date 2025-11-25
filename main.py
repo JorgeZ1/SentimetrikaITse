@@ -4,21 +4,22 @@ from transformers import pipeline
 from typing import Optional, Callable
 
 # --- VISTAS (Tus pantallas) ---
-from mi_dashboard.views.login import create_login_view
-from mi_dashboard.views.register import create_register_view
-from mi_dashboard.views.social_select import create_social_select_view
-from mi_dashboard.views.dashboard_facebook import create_dashboard_view as create_facebook_view
-from mi_dashboard.views.dashboard_reddit import create_dashboard_view as create_reddit_view
-from mi_dashboard.views.dashboard_mastodon import create_dashboard_view as create_mastodon_view
-from mi_dashboard.theme import get_theme
+from frontend.views.login import create_login_view
+from frontend.views.register import create_register_view
+from frontend.views.social_select import create_social_select_view
+from frontend.views.dashboard_facebook import create_dashboard_view as create_facebook_view
+from frontend.views.dashboard_reddit import create_dashboard_view as create_reddit_view
+from frontend.views.dashboard_mastodon import create_dashboard_view as create_mastodon_view
+from frontend.views.comments import create_comments_view
+from frontend.theme import get_theme
 
 # --- BASE DE DATOS ---
-from Api.database import init_db
+from backend.database import init_db
 
 # --- SCRAPERS ---
-from Api.reddit_scraper_opt import run_reddit_scrape_opt 
-from Api.facebook_scraper_opt import run_facebook_scrape_opt
-from Api.mastodon_scraper_opt import run_mastodon_scrape_opt
+from backend.reddit_scraper import run_reddit_scrape_opt
+from backend.facebook_scraper import run_facebook_scrape_opt
+from backend.mastodon_scraper import run_mastodon_scrape_opt
 
 # --- VARIABLES GLOBALES DE IA ---
 translator_model: Optional[Callable] = None
@@ -114,6 +115,9 @@ def main(page: ft.Page) -> None:
             page.views.append(create_reddit_view(page))
         elif page.route == "/dashboard/mastodon":
             page.views.append(create_mastodon_view(page))
+        elif page.route.startswith("/comments/"):
+            pub_id = page.route.split("/")[-1]
+            page.views.append(create_comments_view(page, pub_id))
         else:
             page.views.append(create_login_view(page))
             

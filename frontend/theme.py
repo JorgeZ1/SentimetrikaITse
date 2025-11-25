@@ -1,6 +1,6 @@
 import flet as ft
 
-# --- PALETA DE COLORES MODERNA ---
+# --- PALETA DE COLORES OSCURA/GRISÁCEA ---
 
 # Tema Principal
 PRIMARY_DARK = ft.Colors.BLUE_900
@@ -11,15 +11,15 @@ PRIMARY_LIGHT = ft.Colors.BLUE_400
 ACCENT = ft.Colors.TEAL_600
 ACCENT_LIGHT = ft.Colors.TEAL_300
 
-# Fondos
-BG_LIGHT = ft.Colors.GREY_50
-BG_CARD = ft.Colors.WHITE
-BG_DARK = ft.Colors.GREY_100
+# Fondos - TEMA OSCURO
+BG_LIGHT = ft.Colors.GREY_900           # #212121 - Fondo principal oscuro
+BG_CARD = ft.Colors.GREY_800            # #424242 - Tarjetas gris oscuro
+BG_DARK = ft.Colors.BLACK               # #000000 - Secciones más oscuras
 
-# Texto
-TEXT_PRIMARY = ft.Colors.GREY_900
-TEXT_SECONDARY = ft.Colors.GREY_600
-TEXT_ON_PRIMARY = ft.Colors.WHITE
+# Texto - Ajustado para fondo oscuro
+TEXT_PRIMARY = ft.Colors.GREY_100       # #F5F5F5 - Texto principal claro
+TEXT_SECONDARY = ft.Colors.GREY_400     # #BDBDBD - Texto secundario
+TEXT_ON_PRIMARY = ft.Colors.WHITE       # #FFFFFF - Texto sobre colores oscuros
 
 # Redes Sociales
 REDDIT_COLOR = ft.Colors.DEEP_ORANGE_600
@@ -39,7 +39,7 @@ INFO = ft.Colors.BLUE_600
 
 def get_theme() -> ft.Theme:
     """
-    Devuelve el objeto Theme configurado.
+    Devuelve el objeto Theme configurado para modo oscuro.
     """
     theme = ft.Theme()
     theme.color_scheme_seed = ft.Colors.BLUE_700
