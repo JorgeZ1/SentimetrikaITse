@@ -105,7 +105,7 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
         content_padding=10
     )
 
-    # --- 3. Componente de Progreso (Igual que Facebook) ---
+    # --- 3. Componente de Progreso (Integrado) ---
     progress_text = ft.Text("Iniciando...", size=12, color="primary", italic=True)
     progress_bar = ft.ProgressBar(width=None, color=REDDIT_COLOR, bgcolor="surfaceVariant") 
     
@@ -163,13 +163,15 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
         else:
             show_snackbar(page, "❌ Error al eliminar", is_error=True)
 
-    # --- Lógica de Tarjeta REDDIT ---
+    # --- Lógica de Tarjeta REDDIT (Solo link pequeño) ---
     def create_post_card(post: Publication, comment_count: int):
         post_url = f"https://www.reddit.com/comments/{post.id}/"
         
         main_text = post.title_translated or post.title_original or "Sin contenido"
         has_translation = bool(post.title_translated and post.title_original and post.title_translated != post.title_original)
         content_text = post.title_translated or post.title_original
+        
+        # Verificar si tiene texto largo
         has_body = content_text and len(content_text) > 50
 
         if has_body:
@@ -201,14 +203,15 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
                     ft.Icon(Icons.LINK, color=REDDIT_COLOR, size=30),
                     ft.Column([
                         ft.Text(main_text, weight="bold", color="onSurface"),
-                        ft.Text("Enlace o imagen externa (Clic para ver)", size=12, color="outline")
+                        ft.Text("Enlace o imagen externa", size=12, color="outline")
                     ], spacing=2)
                 ], alignment=ft.MainAxisAlignment.CENTER),
                 bgcolor="surfaceVariant", 
                 padding=15, border_radius=8,
                 border=ft.border.all(1, "outlineVariant"),
                 alignment=ft.alignment.center,
-                on_click=lambda _: page.launch_url(post_url), # Clickable si es multimedia
+                # Este bloque sí puede ser clickeable porque es explícitamente un enlace
+                on_click=lambda _: page.launch_url(post_url), 
                 ink=True
             )
             original_content_block = ft.Container()
@@ -220,20 +223,20 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
                     ft.Container(content=ft.Icon(Icons.REDDIT, color=REDDIT_COLOR, size=20), padding=5, bgcolor="surfaceContainerHighest", border_radius=50),
                     ft.Column([
                         ft.Text("Reddit Thread", size=11, color="outline", weight=ft.FontWeight.BOLD),
-                        # Opción pequeña para ver en web
+                        # OPCIÓN PEQUEÑA PARA IR A LA WEB
                         ft.Container(
                             content=ft.Text("Ver en web ↗", size=10, color=ACCENT_COLOR, weight="bold"),
                             on_click=lambda _: page.launch_url(post_url),
-                            ink=True,
+                            padding=ft.padding.symmetric(horizontal=4, vertical=2),
                             border_radius=4,
-                            padding=2
+                            ink=True
                         )
                     ], spacing=0)
                 ], spacing=8),
                 
                 ft.Divider(height=8, color="transparent"),
                 
-                # Cuerpo Principal (Ya no tiene el on_click global si es texto)
+                # Cuerpo (Ya NO tiene on_click global)
                 ft.Container(
                     content=main_content,
                     border_radius=8
@@ -264,12 +267,11 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
                 ], alignment=ft.MainAxisAlignment.START, spacing=5)
             ], spacing=2),
             
-            # Estilos Tarjeta
             padding=12, 
             bgcolor="surface", 
             border_radius=8, 
             shadow=SHADOW_CARD,
-            # on_click eliminado de aquí para que no toda la tarjeta sea un link
+            # Se eliminó on_click=lambda... de aquí
         )
 
     # --- 5. Eventos ---
@@ -349,7 +351,7 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
             
             finally:
                 if status["has_error"]:
-                    time.sleep(4) # Leer error
+                    time.sleep(4) 
                 
                 progress_container.visible = False
                 try:
