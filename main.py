@@ -3,7 +3,7 @@ import threading
 from transformers import pipeline
 from typing import Optional, Callable
 
-# --- VISTAS (Tus pantallas) ---
+# --- VISTAS ---
 from frontend.views.login import create_login_view
 from frontend.views.register import create_register_view
 from frontend.views.social_select import create_social_select_view
@@ -46,44 +46,52 @@ def main(page: ft.Page) -> None:
     # 2. Configuración de la Ventana
     page.title = "Sentimetrika - Dashboard"
     page.theme = get_theme()
+    page.theme_mode = ft.ThemeMode.LIGHT # Definimos un modo inicial
     page.window_width = 1200
     page.window_height = 800
     
     # 3. Iniciar carga de IA en hilo separado (Daemon)
     threading.Thread(target=load_models, daemon=True).start()
 
-    # --- FUNCIÓN GLOBAL DE ACTUALIZACIÓN (Para el botón del menú) ---
+    # --- FUNCIÓN GLOBAL DE ACTUALIZACIÓN ---
     def run_all_scrapers(e: ft.ControlEvent, translate: bool, page: ft.Page) -> None:
+        """Ejecuta todos los scrapers secuencialmente en segundo plano"""
+        
         def _bg_task() -> None:
             def progress(msg: str) -> None:
-                print(f"[Scraper] {msg}")
+                print(f"[Global Scraper] {msg}")
             
+            # Verificación de modelos
             if not translator_model or not sentiment_model:
-                print("⚠️ Espera a que los modelos carguen...")
+                print("⚠️ Los modelos de IA aún se están cargando. Intenta en unos segundos.")
                 return
 
-            translator_to_use: Optional[Callable] = translator_model if translate else None
+            translator_to_use = translator_model if translate else None
             
             print("🚀 --- INICIANDO ACTUALIZACIÓN MASIVA ---")
 
+            # 1. Reddit
             try:
                 print("--- Ejecutando Reddit ---")
                 run_reddit_scrape_opt(progress, translator_to_use, sentiment_model, "Python", 5, 5)
-            except Exception as e:
-                print(f"Error en Reddit: {e}")
+            except Exception as ex:
+                print(f"Error en Reddit: {ex}")
 
+            # 2. Facebook
             try:
                 print("--- Ejecutando Facebook ---")
                 run_facebook_scrape_opt(progress, translator_to_use, sentiment_model)
-            except Exception as e:
-                print(f"Error en Facebook: {e}")
+            except Exception as ex:
+                print(f"Error en Facebook: {ex}")
 
+            # 3. Mastodon
             try:
                 print("--- Ejecutando Mastodon ---")
                 run_mastodon_scrape_opt(progress, translator_to_use, sentiment_model)
-            except Exception as e:
-                print(f"Error en Mastodon: {e}")
+            except Exception as ex:
+                print(f"Error en Mastodon: {ex}")
             
+            # Notificación final en UI
             page.snack_bar = ft.SnackBar(
                 content=ft.Text("🎉 ¡Datos actualizados! Recarga el dashboard para ver los cambios."),
                 open=True,
@@ -93,16 +101,23 @@ def main(page: ft.Page) -> None:
             
         threading.Thread(target=_bg_task, daemon=True).start()
 
-    # 4. COMPARTIR DATOS CON LAS VISTAS (page.data)
-    page.data = {"run_all_scrapers_func": lambda e, translate=True: run_all_scrapers(e, translate, page)}
+    # 4. COMPARTIR DATOS CON LAS VISTAS
+    # Pasamos la función global y las referencias a los modelos
+    page.data = {
+        "run_all_scrapers_func": lambda e, translate=True: run_all_scrapers(e, translate, page),
+        "translator": None, # Se actualizará en cada cambio de ruta
+        "sentiment": None
+    }
 
     # --- SISTEMA DE NAVEGACIÓN ---
-    def route_change(route: str) -> None:
+    def route_change(e: ft.RouteChangeEvent) -> None: # <--- CORRECCIÓN IMPORTANTE: Recibe un evento 'e'
         page.views.clear()
         
+        # Actualizamos las referencias de modelos en page.data por si ya cargaron
         page.data["translator"] = translator_model
         page.data["sentiment"] = sentiment_model
         
+        # Router
         if page.route == "/login":
             page.views.append(create_login_view(page))
         elif page.route == "/register":
@@ -116,8 +131,12 @@ def main(page: ft.Page) -> None:
         elif page.route == "/dashboard/mastodon":
             page.views.append(create_mastodon_view(page))
         elif page.route.startswith("/comments/"):
-            pub_id = page.route.split("/")[-1]
-            page.views.append(create_comments_view(page, pub_id))
+            try:
+                # Extraer ID de la ruta "/comments/12345"
+                pub_id = page.route.split("/")[-1]
+                page.views.append(create_comments_view(page, pub_id))
+            except IndexError:
+                page.go("/social_select")
         else:
             page.views.append(create_login_view(page))
             
@@ -133,4 +152,5 @@ def main(page: ft.Page) -> None:
     
     page.go("/login")
 
-ft.app(target=main)
+if __name__ == "__main__":
+    ft.app(target=main)

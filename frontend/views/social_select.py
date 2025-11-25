@@ -1,172 +1,220 @@
 import flet as ft
-from flet import Icons, FontWeight, TextThemeStyle, BoxShadow, Offset
-from typing import Callable
-from frontend.theme import *
+from flet import Colors, Icons
+
+# --- Configuración de Redes ---
+SOCIAL_NETWORKS = [
+    {
+        "name": "Facebook",
+        "icon": Icons.FACEBOOK,
+        "color": "#1877F2", # Azul
+        "route": "/dashboard/facebook",
+        "desc": "Gestiona páginas y comentarios"
+    },
+    {
+        "name": "Reddit",
+        "icon": Icons.REDDIT,
+        "color": "#FF4500", # Naranja
+        "route": "/dashboard/reddit",
+        "desc": "Analiza subreddits y tendencias"
+    },
+    {
+        "name": "Mastodon",
+        "icon": Icons.ROCKET_LAUNCH, 
+        "color": "#6364FF", # Violeta
+        "route": "/dashboard/mastodon",
+        "desc": "Monitorea el fediverso"
+    }
+]
 
 def create_social_select_view(page: ft.Page) -> ft.View:
-
-    # --- 1. LÓGICA DE NAVEGACIÓN ---
-    def handle_selection(e: ft.ControlEvent) -> None:
-        platform = e.control.data
-        
-        # Feedback visual
-        page.snack_bar = ft.SnackBar(
-            content=ft.Text(f"Cargando dashboard de: {platform.capitalize()}...", style=ft.TextStyle(color=TEXT_ON_PRIMARY)),
-            bgcolor=INFO
-        )
-        page.snack_bar.open = True
-        page.update()
-        
-        # Navegar al dashboard correspondiente
-        page.go(f"/dashboard/{platform}")
-
-    # --- Componente de tarjeta ---
-    def create_platform_card(title: str, icon: str, color: str, platform_key: str) -> ft.Card:
-        # Crear el container con efecto hover
-        card_container = ft.Container(
-            content=ft.Column(
-                [
-                    ft.Icon(icon, size=50, color=color), 
-                    ft.Text(title, style=ft.TextStyle(size=18, weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY)),
-                    ft.Text("Analizar datos y sentimientos", style=ft.TextStyle(size=12, color=TEXT_SECONDARY)), 
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=10
-            ),
-            width=220,
-            height=180,
-            alignment=ft.alignment.center,
-            on_click=handle_selection,
-            data=platform_key, 
-            ink=True,
-            padding=ft.padding.all(20),
-            bgcolor=BG_CARD,
-            border=ft.border.all(2, ft.Colors.TRANSPARENT),
-            border_radius=12,
-            animate=200,
-        )
-        
-        # Eventos de hover
-        def on_hover(e):
-            if e.data == "true":
-                card_container.border = ft.border.all(2, color)
-                card_container.elevation = 12
-            else:
-                card_container.border = ft.border.all(2, ft.Colors.TRANSPARENT)
-                card_container.elevation = 8
-            card_container.update()
-        
-        card_container.on_hover = on_hover
-        
-        return ft.Card(
-            content=card_container,
-            elevation=8,
-            width=240,
-            height=200,
-        )
-
-    # --- 2. Función Scraper ---
-    def run_scrapers_and_show_log(e: ft.ControlEvent) -> None:
-        if page.data and "run_all_scrapers_func" in page.data:
-            run_func: Callable = page.data["run_all_scrapers_func"]
-            run_func(e) 
-            
-            page.snack_bar = ft.SnackBar(
-                content=ft.Text("Iniciando actualización en segundo plano... (Revisa la terminal)", style=ft.TextStyle(color=TEXT_ON_PRIMARY)),
-                bgcolor=INFO
-            )
-            page.snack_bar.open = True
-            page.update()
-            
+    
+    # --- Lógica de Tema (Día/Noche) ---
+    def toggle_theme(e):
+        if page.theme_mode == ft.ThemeMode.LIGHT:
+            page.theme_mode = ft.ThemeMode.DARK
+            theme_icon.icon = Icons.LIGHT_MODE
+            theme_icon.tooltip = "Cambiar a Modo Claro"
         else:
-            print("Error: La función 'run_all_scrapers_func' no está en 'page.data'.")
-            page.snack_bar = ft.SnackBar(
-                content=ft.Text("¡Error! No se pudo iniciar el scrape. Reinicia la app.", style=ft.TextStyle(color=TEXT_ON_PRIMARY)),
-                bgcolor=ERROR
-            )
-            page.snack_bar.open = True
-            page.update()
+            page.theme_mode = ft.ThemeMode.LIGHT
+            theme_icon.icon = Icons.DARK_MODE
+            theme_icon.tooltip = "Cambiar a Modo Oscuro"
+        page.update()
 
-    # --- LAYOUT PRINCIPAL ---
+    initial_icon = Icons.DARK_MODE if page.theme_mode == ft.ThemeMode.LIGHT else Icons.LIGHT_MODE
+    
+    theme_icon = ft.IconButton(
+        icon=initial_icon,
+        icon_color="onSurface",
+        on_click=toggle_theme,
+        tooltip="Cambiar Tema"
+    )
+
+    def logout(e):
+        page.go("/login")
+
+    # --- Componente: Tarjeta de Red Social ---
+    def create_network_card(network):
+        
+        # Lógica de Hover Personalizada (Color Brillante)
+        def on_card_hover(e):
+            container = e.control
+            if e.data == "true":
+                # AL ENTRAR: Escalar y cambiar sombra al color de la red
+                container.scale = 1.05
+                container.shadow = ft.BoxShadow(
+                    spread_radius=2,
+                    blur_radius=20,
+                    color=network["color"], # <--- AQUÍ ESTÁ EL BRILLO DEL COLOR DE LA RED
+                    offset=ft.Offset(0, 0)
+                )
+                # Opcional: Cambiar borde al color de la red
+                container.border = ft.border.all(2, network["color"])
+            else:
+                # AL SALIR: Regresar a estado normal (sombra negra suave)
+                container.scale = 1.0
+                container.shadow = ft.BoxShadow(
+                    spread_radius=0,
+                    blur_radius=10,
+                    color=ft.Colors.with_opacity(0.1, ft.Colors.BLACK),
+                    offset=ft.Offset(0, 4)
+                )
+                container.border = ft.border.all(1, "outlineVariant")
+            
+            container.update()
+
+        return ft.Container(
+            content=ft.Column([
+                # Icono
+                ft.Container(
+                    content=ft.Icon(network["icon"], size=40, color=network["color"]),
+                    padding=15,
+                    bgcolor=ft.Colors.with_opacity(0.1, network["color"]),
+                    border_radius=50,
+                ),
+                ft.Divider(height=10, color="transparent"),
+                # Título
+                ft.Text(
+                    network["name"], 
+                    size=20, 
+                    weight=ft.FontWeight.BOLD, 
+                    color="onSurface"
+                ),
+                # Descripción
+                ft.Text(
+                    network["desc"], 
+                    size=12, 
+                    color="onSurfaceVariant", 
+                    text_align=ft.TextAlign.CENTER
+                ),
+                ft.Divider(height=10, color="transparent"),
+                # Botón visual (simulado)
+                ft.Container(
+                    content=ft.Text("Entrar", size=12, weight="bold", color=network["color"]),
+                    padding=ft.padding.symmetric(horizontal=20, vertical=8),
+                    border=ft.border.all(1, network["color"]),
+                    border_radius=20
+                )
+            ], 
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            alignment=ft.MainAxisAlignment.CENTER),
+            
+            # --- ESTILOS VISUALES ---
+            width=250,
+            height=280,
+            
+            # CORRECCIÓN: Usamos "surface" para que sea Blanco en Día y Gris en Noche
+            bgcolor="surface", 
+            
+            border=ft.border.all(1, "outlineVariant"),
+            border_radius=20,
+            padding=25,
+            
+            # Sombra inicial (neutra)
+            shadow=ft.BoxShadow(
+                spread_radius=0,
+                blur_radius=10,
+                color=ft.Colors.with_opacity(0.1, ft.Colors.BLACK),
+                offset=ft.Offset(0, 4)
+            ),
+            
+            # Animaciones e Interactividad
+            ink=True,
+            animate_scale=ft.Animation(200, ft.AnimationCurve.EASE_OUT), # Suavizado
+            on_click=lambda _: page.go(network["route"]),
+            on_hover=on_card_hover # <--- Vinculamos la función de brillo
+        )
+
+    # --- Construcción de la Grilla ---
+    cards_layout = ft.Row(
+        controls=[create_network_card(net) for net in SOCIAL_NETWORKS],
+        alignment=ft.MainAxisAlignment.CENTER,
+        wrap=True,
+        spacing=30,
+        run_spacing=30
+    )
+
+    # --- Botón Global ---
+    run_all_func = page.data.get("run_all_scrapers_func") if hasattr(page, "data") and page.data else None
+
+    action_button = ft.Container()
+    if run_all_func:
+        action_button = ft.Container(
+            content=ft.ElevatedButton(
+                "Analizar Todo (Global)",
+                icon=Icons.ROCKET,
+                style=ft.ButtonStyle(
+                    color="onPrimary",
+                    bgcolor="primary",
+                    padding=20,
+                    shape=ft.RoundedRectangleBorder(radius=10),
+                    elevation=5
+                ),
+                on_click=lambda e: run_all_func(e, translate=True),
+                width=300
+            ),
+            padding=ft.padding.only(top=40)
+        )
+
+    # --- Vista Final ---
     return ft.View(
         "/social_select",
-        [
-            ft.AppBar(
-                title=ft.Text("🌐 Selecciona tu Fuente de Datos", style=ft.TextStyle(color=TEXT_ON_PRIMARY)), 
-                bgcolor=PRIMARY_DARK
-            ),
-            ft.Container(
-                image=ft.DecorationImage(
-                    src="frontend/assets/login_bg.png", 
-                    fit=ft.ImageFit.COVER,
-                    opacity=0.03
+        bgcolor="background", # Fondo general adaptable
+        appbar=ft.AppBar(
+            leading=ft.Icon(Icons.ANALYTICS, color="primary"),
+            title=ft.Text("Sentimetrika Hub", weight=ft.FontWeight.BOLD, color="onSurface"),
+            center_title=False,
+            bgcolor="surface",
+            elevation=0,
+            actions=[
+                theme_icon,
+                ft.IconButton(
+                    icon=Icons.LOGOUT,
+                    icon_color="error", 
+                    tooltip="Cerrar Sesión",
+                    on_click=logout
                 ),
-                expand=True,
-                bgcolor=BG_LIGHT,
-                content=ft.Column(
-                    [
-                        ft.Text(
-                            "¿Qué red social deseas analizar hoy?", 
-                            style=ft.TextStyle(size=32, weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY)
-                        ),
-                        ft.Text(
-                            "Cada selección te llevará a un dashboard individual.", 
-                            style=ft.TextStyle(italic=True, color=TEXT_SECONDARY, size=14)
-                        ),
-                        ft.Container(height=40),
-                        
-                        ft.Row(
-                            [
-                                create_platform_card(
-                                    "Reddit", 
-                                    Icons.REDDIT, 
-                                    REDDIT_COLOR, 
-                                    "reddit"
-                                ),
-                                create_platform_card(
-                                    "Mastodon", 
-                                    Icons.HIDE_SOURCE, 
-                                    MASTODON_COLOR,
-                                    "mastodon"
-                                ),
-                                create_platform_card(
-                                    "Facebook", 
-                                    Icons.FACEBOOK, 
-                                    FACEBOOK_COLOR,
-                                    "facebook"
-                                ),
-                            ],
-                            alignment=ft.MainAxisAlignment.CENTER,
-                            spacing=50
-                        ),
-                        
-                        ft.Container(height=50),
-                        
-                        ft.Row(
-                            [
-                                ft.TextButton(
-                                    "Volver al Login",
-                                    icon=Icons.ARROW_BACK, 
-                                    on_click=lambda e: page.go("/login"),
-                                    style=ft.ButtonStyle(color=PRIMARY)
-                                ),
-                                ft.ElevatedButton(
-                                    "Actualizar Datos",
-                                    icon=Icons.REFRESH,
-                                    on_click=run_scrapers_and_show_log,
-                                    bgcolor=ACCENT,
-                                    color=TEXT_ON_PRIMARY,       
-                                )
-                            ],
-                            alignment=ft.MainAxisAlignment.CENTER,
-                            spacing=20 
-                        )
-                    ],
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                )
+                ft.Container(width=15)
+            ]
+        ),
+        controls=[
+            ft.Container(
+                content=ft.Column([
+                    ft.Column([
+                        ft.Text("Bienvenido al Panel de Control", size=32, weight=ft.FontWeight.BOLD, color="onSurface"),
+                        ft.Text("Selecciona una red social para gestionar y analizar.", 
+                               size=16, color="onSurfaceVariant")
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=5),
+                    
+                    ft.Divider(height=40, color="transparent"),
+                    
+                    cards_layout,
+                    action_button
+                    
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                
+                padding=ft.padding.symmetric(vertical=50, horizontal=20),
+                alignment=ft.alignment.center,
+                expand=True 
             )
-        ],
-        padding=0
+        ]
     )
