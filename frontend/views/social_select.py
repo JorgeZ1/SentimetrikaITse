@@ -119,8 +119,8 @@ def create_social_select_view(page: ft.Page) -> ft.View:
             alignment=ft.MainAxisAlignment.CENTER),
             
             # --- ESTILOS VISUALES ---
-            width=250,
-            height=280,
+            width=320,
+            height=350,
             
             # CORRECCIÓN: Usamos "surface" para que sea Blanco en Día y Gris en Noche
             bgcolor="surface", 
@@ -153,27 +153,7 @@ def create_social_select_view(page: ft.Page) -> ft.View:
         run_spacing=30
     )
 
-    # --- Botón Global ---
-    run_all_func = page.data.get("run_all_scrapers_func") if hasattr(page, "data") and page.data else None
 
-    action_button = ft.Container()
-    if run_all_func:
-        action_button = ft.Container(
-            content=ft.ElevatedButton(
-                "Analizar Todo (Global)",
-                icon=Icons.ROCKET,
-                style=ft.ButtonStyle(
-                    color="onPrimary",
-                    bgcolor="primary",
-                    padding=20,
-                    shape=ft.RoundedRectangleBorder(radius=10),
-                    elevation=5
-                ),
-                on_click=lambda e: run_all_func(e, translate=True),
-                width=300
-            ),
-            padding=ft.padding.only(top=40)
-        )
 
     # --- Vista Final ---
     return ft.View(
@@ -207,8 +187,7 @@ def create_social_select_view(page: ft.Page) -> ft.View:
                     
                     ft.Divider(height=40, color="transparent"),
                     
-                    cards_layout,
-                    action_button
+                    cards_layout
                     
                 ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
                 

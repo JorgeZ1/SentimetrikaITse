@@ -114,6 +114,7 @@ class MastodonScraper:
                     translations = {t: r['translation_text'] for t, r in zip(to_translate, res)}
             except: pass
             
+        # Analizar sentimiento sobre TEXTO TRADUCIDO (español) para Mastodon
         if sentiment:
             texts_sent = [translations.get(t, t) for t in texts if len(t) > 2]
             if texts_sent:

@@ -123,10 +123,13 @@ class RedditScraper:
             except Exception as e:
                 self.progress_callback(f"❌ Error traduciendo comentarios: {e}")
 
-        texts_for_sentiment = [translated_texts.get(c['text_original'][:512], c['text_original'][:512]) for c in unique_comments]
+
+        # Analizar sentimiento sobre el TEXTO ORIGINAL (inglés) para mejor precisión
+        # Pero traducir para mostrar al usuario en español
+        texts_for_sentiment = [c['text_original'][:512] for c in unique_comments]
         sentiments = []
         if sentiment_analyzer and texts_for_sentiment:
-            self.progress_callback(f"Analizando sentimiento de {len(texts_for_sentiment)} comentarios...")
+            self.progress_callback(f"Analizando sentimiento de {len(texts_for_sentiment)} comentarios (en inglés para mayor precisión)...")
             try:
                 results = sentiment_analyzer(texts_for_sentiment, batch_size=16, truncation=True)
                 sentiments = results

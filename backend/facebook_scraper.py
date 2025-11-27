@@ -135,6 +135,7 @@ class FacebookScraper:
             except Exception as e:
                 print(f"Warn Traducción: {e}")
 
+        # Analizar sentimiento sobre TEXTO TRADUCIDO (español) para Facebook
         if sentiment:
             texts_for_sent = [translations.get(t, t) for t in texts]
             try:
