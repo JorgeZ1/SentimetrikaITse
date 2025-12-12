@@ -135,8 +135,11 @@ def create_comment_card(comment: Comment) -> ft.Container:
     # Detectar si hay traducción
     has_translation = bool(comment.text_translated and comment.text_original and comment.text_translated != comment.text_original)
     
-    # TEXTO PRINCIPAL = TRADUCCIÓN (Español)
-    main_text = comment.text_translated or comment.text_original or "..."
+    # SIEMPRE mostrar text_original como principal (el texto original real)
+    # y text_translated como secundario (la traducción al inglés para referencia)
+    main_text = comment.text_original or "..."
+    secondary_text = comment.text_translated or ""
+    secondary_label = "English:"
 
     return ft.Container(
         content=ft.Row([
@@ -157,16 +160,16 @@ def create_comment_card(comment: Comment) -> ft.Container:
                     
                     ft.Divider(height=5, color=ft.Colors.TRANSPARENT),
                     
-                    # --- 1. ESPAÑOL / TRADUCIDO (Grande) ---
+                    # --- 1. PRINCIPAL (Grande) ---
                     ft.Text(main_text, color="onSurface", size=15, selectable=True),
 
-                    # --- 2. INGLÉS / ORIGINAL (Pequeño) ---
+                    # --- 2. SECUNDARIO / REFERENCIA (Pequeño) ---
                     ft.Container(
                         visible=has_translation,
                         content=ft.Column([
                             ft.Divider(height=5, color="outlineVariant"),
-                            ft.Text("Original:", size=9, color="outline", weight="bold"),
-                            ft.Text(comment.text_original or "", size=12, color="onSurfaceVariant", italic=True, selectable=True)
+                            ft.Text(secondary_label, size=9, color="outline", weight="bold"),
+                            ft.Text(secondary_text, size=12, color="onSurfaceVariant", italic=True, selectable=True)
                         ]),
                         padding=ft.padding.only(top=2)
                     )
@@ -192,7 +195,8 @@ def create_comments_view(page: ft.Page, pub_id: str) -> ft.View:
     try:
         publicacion_actual = session.query(Publication).filter_by(id=pub_id).first()
         if publicacion_actual:
-            comentarios_actuales = session.query(Comment).filter_by(publication_id=pub_id).all()
+            # Ordenar comentarios por ID descendente (más recientes primero)
+            comentarios_actuales = session.query(Comment).filter_by(publication_id=pub_id).order_by(Comment.id.desc()).all()
     except Exception as e:
         print(f"Error DB: {e}")
     finally:

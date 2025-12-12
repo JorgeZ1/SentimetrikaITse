@@ -125,28 +125,35 @@ class FacebookScraper:
         self.progress_callback(f"Procesando {len(unique_comments)} comentarios...")
         
         texts = [c['text'] for c in unique_comments]
-        translations = {}
+        translations_to_english = {}
         sentiments = []
         
+        # PASO 1: Traducir a inglés SOLO para análisis de sentimiento
         if translator:
             try:
+                self.progress_callback(f"Traduciendo {len(texts)} comentarios a inglés (para análisis)...")
                 res = translator(texts, max_length=512, truncation=True, batch_size=8)
-                translations = {t: r['translation_text'] for t, r in zip(texts, res)}
+                translations_to_english = {t: r['translation_text'] for t, r in zip(texts, res)}
             except Exception as e:
-                print(f"Warn Traducción: {e}")
+                self.progress_callback(f"⚠️ Error traducción: {e}")
+                # Fallback: usar textos originales
+                translations_to_english = {t: t for t in texts}
+        else:
+            translations_to_english = {t: t for t in texts}
 
-        # Analizar sentimiento sobre TEXTO TRADUCIDO (español) para Facebook
+        # PASO 2: Analizar sentimiento sobre TEXTO EN INGLÉS - modelo está entrenado en inglés
         if sentiment:
-            texts_for_sent = [translations.get(t, t) for t in texts]
+            texts_for_sent = [translations_to_english.get(t, t) for t in texts]
             try:
+                self.progress_callback(f"Analizando sentimiento de {len(texts_for_sent)} comentarios (en inglés)...")
                 sentiments = sentiment(texts_for_sent, truncation=True, batch_size=8)
             except Exception as e:
-                print(f"Warn Sentimiento: {e}")
+                self.progress_callback(f"⚠️ Error análisis sentimiento: {e}")
 
         to_save = []
         for i, c in enumerate(unique_comments):
-            orig = c['text']
-            trans = translations.get(orig, orig)
+            orig_text = c['text']  # Texto original tal como viene de Facebook
+            translated_to_english = translations_to_english.get(orig_text, orig_text)  # Traducción a inglés para análisis
             
             s_label = 'neutral'
             s_score = '0.0'
@@ -157,8 +164,8 @@ class FacebookScraper:
             to_save.append(Comment(
                 publication_id=c['publication_id'],
                 author=c['author'],
-                text_original=orig,
-                text_translated=trans,
+                text_original=orig_text,  # Guardar original tal como viene (probablemente español)
+                text_translated=translated_to_english,  # Guardar traducción a inglés (solo para referencia)
                 sentiment_label=s_label,
                 sentiment_score=s_score
             ))

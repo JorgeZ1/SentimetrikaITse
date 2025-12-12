@@ -105,22 +105,31 @@ class MastodonScraper:
         translations = {}
         sentiments = []
         
+        # PASO 1: Traducir al inglés PRIMERO
         if translator:
             try:
                 # Filtrar textos vacíos o muy cortos para no gastar IA
                 to_translate = [t for t in texts if len(t) > 2]
                 if to_translate:
+                    self.progress_callback(f"Traduciendo {len(to_translate)} respuestas al inglés...")
                     res = translator(to_translate, max_length=512, truncation=True, batch_size=8)
                     translations = {t: r['translation_text'] for t, r in zip(to_translate, res)}
-            except: pass
+            except Exception as e:
+                self.progress_callback(f"⚠️ Error traducción: {e}")
+        
+        # Si no hay traductor, usar textos originales
+        if not translations:
+            translations = {t: t for t in texts}
             
-        # Analizar sentimiento sobre TEXTO TRADUCIDO (español) para Mastodon
+        # PASO 2: Analizar sentimiento sobre TEXTO TRADUCIDO (inglés) - modelo está en inglés
         if sentiment:
             texts_sent = [translations.get(t, t) for t in texts if len(t) > 2]
             if texts_sent:
                 try:
+                    self.progress_callback(f"Analizando sentimiento de {len(texts_sent)} respuestas (en inglés)...")
                     sentiments = sentiment(texts_sent, truncation=True, batch_size=8)
-                except: pass
+                except Exception as e:
+                    self.progress_callback(f"⚠️ Error análisis sentimiento: {e}")
 
         to_save = []
         sent_idx = 0
@@ -129,6 +138,7 @@ class MastodonScraper:
             trans = translations.get(txt, txt)
             
             s_l, s_s = "neutral", "0.0"
+            # Solo procesar sentimiento si el texto tiene contenido
             if len(txt) > 2 and sent_idx < len(sentiments):
                 s_l = _mapear_sentimiento(sentiments[sent_idx]['label'])
                 s_s = str(round(sentiments[sent_idx]['score'], 4))
@@ -137,8 +147,8 @@ class MastodonScraper:
             to_save.append(Comment(
                 publication_id=c['publication_id'],
                 author=c['author'],
-                text_original=txt,
-                text_translated=trans,
+                text_original=txt,  # Guardar original tal como viene
+                text_translated=trans,  # Guardar traducción a inglés
                 sentiment_label=s_l,
                 sentiment_score=s_s
             ))
@@ -151,6 +161,7 @@ class MastodonScraper:
     def scrape(self, target_ids: List[str], translator, sentiment_analyzer):
         """
         Ejecuta el scraping sobre una lista de IDs proporcionada en memoria.
+        Procesa por lotes para evitar locks de SQLite.
         """
         if not self.mastodon:
             return
@@ -160,71 +171,89 @@ class MastodonScraper:
             return
 
         session = SessionLocal()
-        nuevos_pubs = 0
-        nuevos_comms = 0
+        nuevos_pubs_total = 0
+        nuevos_comms_total = 0
 
         try:
             self.progress_callback(f"Analizando {len(target_ids)} IDs de Mastodon...")
             
-            posts_data = []
-            all_comments = []
-
-            for post_id in target_ids:
-                if not post_id.isdigit(): continue
+            # Procesar por lotes de 10 IDs para evitar transacciones muy largas
+            batch_size = 10
+            for batch_start in range(0, len(target_ids), batch_size):
+                batch_ids = target_ids[batch_start:batch_start + batch_size]
                 
-                try:
-                    # 1. Obtener Toot
-                    status = self.mastodon.status(post_id)
-                    text_clean = self._limpiar_html(status.content)
+                posts_data = []
+                all_comments = []
+
+                for post_id in batch_ids:
+                    if not post_id.isdigit(): continue
                     
-                    # Traducción preliminar del post (para guardar en Publication)
-                    trans_title = text_clean
-                    if translator and text_clean:
-                        try:
-                            res = translator(text_clean[:512])
-                            trans_title = res[0]['translation_text']
-                        except: pass
+                    try:
+                        # 1. Obtener Toot
+                        status = self.mastodon.status(post_id)
+                        text_clean = self._limpiar_html(status.content)
+                        
+                        # Traducción preliminar del post (para guardar en Publication)
+                        trans_title = text_clean
+                        if translator and text_clean:
+                            try:
+                                res = translator(text_clean[:512])
+                                trans_title = res[0]['translation_text']
+                            except: pass
 
-                    posts_data.append({
-                        'id': str(status.id),
-                        'text_original': text_clean,
-                        'text_translated': trans_title
-                    })
+                        posts_data.append({
+                            'id': str(status.id),
+                            'text_original': text_clean,
+                            'text_translated': trans_title
+                        })
 
-                    # 2. Obtener Contexto (Comentarios)
-                    context = self.mastodon.status_context(post_id)
-                    descendants = context.get('descendants', [])
-                    
-                    for reply in descendants[:20]: # Límite por post
-                        c_text = self._limpiar_html(reply.content)
-                        if c_text:
-                            author = reply.account.username or "unknown"
-                            all_comments.append({
-                                'publication_id': str(status.id),
-                                'author': author,
-                                'text_original': c_text
-                            })
-                            
-                except Exception as e:
-                    print(f"Error ID {post_id}: {e}")
-                    continue
+                        # 2. Obtener Contexto (Comentarios)
+                        context = self.mastodon.status_context(post_id)
+                        descendants = context.get('descendants', [])
+                        
+                        for reply in descendants[:20]: # Límite por post
+                            c_text = self._limpiar_html(reply.content)
+                            if c_text:
+                                author = reply.account.username or "unknown"
+                                all_comments.append({
+                                    'publication_id': str(status.id),
+                                    'author': author,
+                                    'text_original': c_text
+                                })
+                                
+                    except Exception as e:
+                        print(f"Error ID {post_id}: {e}")
+                        continue
 
-            # Guardar en lotes
-            nuevos_pubs = self._process_and_save_publications(session, posts_data)
-            nuevos_comms = self._process_and_save_comments(session, all_comments, translator, sentiment_analyzer)
+                # Guardar lote actual con commit incremental
+                if posts_data or all_comments:
+                    try:
+                        nuevos_pubs = self._process_and_save_publications(session, posts_data)
+                        nuevos_comms = self._process_and_save_comments(session, all_comments, translator, sentiment_analyzer)
+                        
+                        nuevos_pubs_total += nuevos_pubs
+                        nuevos_comms_total += nuevos_comms
+                        
+                        # Commit incremental por lote
+                        if nuevos_pubs > 0 or nuevos_comms > 0:
+                            session.commit()
+                            self.progress_callback(f"  └ Lote guardado: +{nuevos_pubs} toots, +{nuevos_comms} respuestas")
+                    except Exception as e:
+                        session.rollback()
+                        self.progress_callback(f"⚠️ Error en lote: {e}")
+                        continue
 
-            if nuevos_pubs > 0 or nuevos_comms > 0:
-                session.commit()
-                self.progress_callback("✅ Cambios guardados en BD.")
+            if nuevos_pubs_total == 0 and nuevos_comms_total == 0:
+                self.progress_callback("ℹ️ No se encontraron datos nuevos.")
             else:
-                self.progress_callback("Todo actualizado.")
+                self.progress_callback("✅ Todos los cambios guardados en BD.")
 
         except Exception as e:
             session.rollback()
             self.progress_callback(f"❌ Error general: {e}")
         finally:
             session.close()
-            self.progress_callback(f"Resumen: {nuevos_pubs} toots, {nuevos_comms} respuestas.")
+            self.progress_callback(f"Resumen: {nuevos_pubs_total} toots, {nuevos_comms_total} respuestas.")
 
 def run_mastodon_scrape_opt(progress_callback, translator, sentiment, target_ids_list=None):
     """

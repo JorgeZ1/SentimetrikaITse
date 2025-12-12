@@ -7,7 +7,7 @@ def create_login_view(page: ft.Page):
     email = ft.TextField(
         label="Correo electrónico",
         border_radius=8,
-        border_color=PRIMARY,
+        border="none",
         width=320,
         filled=True,
         fill_color=BG_DARK,
@@ -18,7 +18,7 @@ def create_login_view(page: ft.Page):
         password=True,
         can_reveal_password=True,
         border_radius=8,
-        border_color=PRIMARY,
+        border="none",
         width=320,
         filled=True,
         fill_color=BG_DARK,
@@ -60,6 +60,7 @@ def create_login_view(page: ft.Page):
                         width=450,
                         padding=40,
                         bgcolor=BG_CARD,
+                        border_radius=20,
                         content=ft.Column(
                             [
                                 ft.Image(src="/Sentimetrika.png", width=120),

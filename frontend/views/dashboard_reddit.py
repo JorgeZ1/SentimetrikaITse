@@ -105,6 +105,31 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
         content_padding=10
     )
 
+    # Controles para límites del scraper (tuerca)
+    post_limit_slider = ft.Slider(min=1, max=30, value=20, divisions=29, label="Posts: 20", width=260)
+    comment_limit_slider = ft.Slider(min=1, max=30, value=10, divisions=29, label="Comentarios: 10", width=260)
+
+    def on_post_limit_change(e):
+        v = int(e.control.value)
+        post_limit_slider.label = f"Posts: {v}"
+        try: page.update()
+        except: pass
+
+    def on_comment_limit_change(e):
+        v = int(e.control.value)
+        comment_limit_slider.label = f"Comentarios: {v}"
+        try: page.update()
+        except: pass
+
+    post_limit_slider.on_change = on_post_limit_change
+    comment_limit_slider.on_change = on_comment_limit_change
+
+    # Control para detener la ejecución del scraper
+    reddit_stop_event = None
+
+    start_button = ft.ElevatedButton("Ejecutar Scraper", icon=Icons.CLOUD_DOWNLOAD, on_click=None, bgcolor=REDDIT_COLOR, color="white", width=260)
+    stop_button = ft.ElevatedButton("Detener", icon=Icons.STOP, on_click=None, bgcolor=ft.Colors.RED_600, color="white", width=260, disabled=True)
+
     # --- 3. Componente de Progreso (Integrado) ---
     progress_text = ft.Text("Iniciando...", size=12, color="primary", italic=True)
     progress_bar = ft.ProgressBar(width=None, color=REDDIT_COLOR, bgcolor="surfaceVariant") 
@@ -313,6 +338,17 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
         progress_text.value = f"Analizando r/{target_sub}..."
         page.update()
         
+        nonlocal reddit_stop_event
+
+        # Preparar y activar el Event de detención
+        reddit_stop_event = threading.Event()
+        start_button.disabled = True
+        stop_button.disabled = False
+        try:
+            page.update()
+        except:
+            pass
+
         def _thread_target():
             status = {"has_error": False, "last_message": ""}
             
@@ -332,14 +368,14 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
             try:
                 translator = page.data.get("translator") if hasattr(page, 'data') and page.data else None
                 sentiment = page.data.get("sentiment") if hasattr(page, 'data') and page.data else None
-                
                 run_reddit_scrape_opt(
                     progress_callback=on_progress_update,
                     translator=translator,
                     sentiment_analyzer=sentiment,
                     subreddit_name=target_sub,
-                    post_limit=5,
-                    comment_limit=10
+                    post_limit=int(post_limit_slider.value),
+                    comment_limit=int(comment_limit_slider.value),
+                    stop_event=reddit_stop_event
                 )
                 refresh_data_objects() 
                 render_publications()
@@ -350,19 +386,30 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
                 status["last_message"] = str(ex)
             
             finally:
-                if status["has_error"]:
-                    time.sleep(4) 
-                
-                progress_container.visible = False
-                try:
+                # Restaurar estado de botones y UI usando idle callback
+                def restore_ui():
+                    nonlocal start_button, stop_button
+                    start_button.disabled = False
+                    stop_button.disabled = True
+                    progress_container.visible = False
+                    
+                    if status["has_error"]:
+                        show_snackbar(page, "Proceso terminado con errores", is_error=True)
+                    else:
+                        show_snackbar(page, f"Datos de r/{target_sub} actualizados")
+                    
                     page.update()
-                except:
-                    pass
                 
+                # Esperar un poco si hubo error
                 if status["has_error"]:
-                    show_snackbar(page, "Proceso terminado con errores", is_error=True)
-                else:
-                    show_snackbar(page, f"Datos de r/{target_sub} actualizados")
+                    time.sleep(2)
+                
+                # Ejecutar restauración en el hilo principal de Flet
+                try:
+                    page.run_task(restore_ui)
+                except:
+                    # Fallback si run_task no está disponible
+                    restore_ui()
 
         threading.Thread(target=_thread_target, daemon=True).start()
 
@@ -374,6 +421,18 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
         show_snackbar(page, f"Vaciado ({count} eliminados)")
 
     # --- 6. Definición del Drawer ---
+    # Acción para detener desde UI
+    def stop_scraper_click(e):
+        nonlocal reddit_stop_event
+        if reddit_stop_event is not None:
+            reddit_stop_event.set()
+            progress_text.value = "Detención solicitada..." 
+            try: page.update()
+            except: pass
+
+    # Asignar handlers a botones
+    start_button.on_click = run_scraper_click
+    stop_button.on_click = stop_scraper_click
     config_drawer = ft.NavigationDrawer(
         position=ft.NavigationDrawerPosition.END,
         controls=[
@@ -384,8 +443,13 @@ def create_dashboard_view(page: ft.Page) -> ft.View:
                     ft.Divider(),
                     ft.Text("Subreddit Objetivo", weight="bold", size=12, color="onSurfaceVariant"),
                     subreddit_input,
+                    ft.Divider(height=10),
+                    ft.Text("Límites del Scraper", weight="bold", size=12, color="onSurfaceVariant"),
+                    post_limit_slider,
+                    comment_limit_slider,
                     ft.Divider(height=20),
-                    ft.ElevatedButton("Ejecutar Scraper", icon=Icons.CLOUD_DOWNLOAD, on_click=run_scraper_click, bgcolor=REDDIT_COLOR, color="white", width=260),
+                    start_button,
+                    stop_button,
                     ft.ElevatedButton("Generar PDF", icon=Icons.PICTURE_AS_PDF, on_click=lambda _: generate_pdf_report(page, publications, comments_map), bgcolor=ft.Colors.ORANGE_700, color="white", width=260),
                     ft.Divider(),
                     ft.OutlinedButton("Borrar Todo", icon=Icons.DELETE_FOREVER, on_click=clear_all_click, style=ft.ButtonStyle(color=ERROR), width=260)

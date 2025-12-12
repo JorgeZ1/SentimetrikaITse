@@ -4,6 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from .database import SessionLocal, Publication, Comment
 from typing import List, Dict, Any, Callable, Optional
+import threading
 from sqlalchemy.orm import Session
 
 load_dotenv()
@@ -13,7 +14,7 @@ CLIENT_ID: str = os.getenv("REDDIT_CLIENT_ID")
 CLIENT_SECRET: str = os.getenv("REDDIT_CLIENT_SECRET")
 USER_AGENT: str = "python:SentimentApp:v2.0 (by /u/SentimetrikaBot)"
 
-from .sentiment_utils import _mapear_sentimiento
+from .sentiment_utils import _mapear_sentimiento, analizar_sentimiento_con_umbral
 
 class RedditScraper:
     def __init__(self, progress_callback: Callable[[str], None]):
@@ -112,21 +113,38 @@ class RedditScraper:
 
         self.progress_callback(f"Procesando {len(unique_comments)} comentarios únicos...")
 
-        texts_to_translate = [c['text_original'][:512] for c in unique_comments]
-        translated_texts: Dict[str, str] = {}
-        if translator and texts_to_translate:
-            self.progress_callback(f"Traduciendo {len(texts_to_translate)} comentarios...")
+        # PASO 1: Preparar textos originales
+        texts_original = [c['text_original'][:512] for c in unique_comments]
+        translations_to_english: Dict[str, str] = {}
+
+        # Si hay un traductor disponible, traducir a inglés ANTES del análisis
+        if translator and texts_original:
+            self.progress_callback(f"Traduciendo {len(texts_original)} comentarios a inglés para análisis...")
             try:
-                results = translator(texts_to_translate, max_length=512, batch_size=16, truncation=True)
-                for i, res in enumerate(results):
-                    translated_texts[texts_to_translate[i]] = res['translation_text']
+                # El traductor puede devolver una lista de dicts o directamente strings según implementación
+                trans_results = translator(texts_original, max_length=512, batch_size=16)
+                translated_texts = []
+                for i, tres in enumerate(trans_results):
+                    if isinstance(tres, dict) and 'translation_text' in tres:
+                        translated_texts.append(tres['translation_text'])
+                    elif isinstance(tres, str):
+                        translated_texts.append(tres)
+                    else:
+                        # Fallback: mantener original si la respuesta no es reconocida
+                        translated_texts.append(texts_original[i])
+
+                for orig, tr in zip(texts_original, translated_texts):
+                    translations_to_english[orig] = tr
             except Exception as e:
-                self.progress_callback(f"❌ Error traduciendo comentarios: {e}")
+                self.progress_callback(f"❌ Error al traducir comentarios: {e}")
+                translations_to_english = {t: t for t in texts_original}
+        else:
+            # No hay traductor: asumimos que el texto ya está en inglés
+            translations_to_english = {t: t for t in texts_original}
 
-
-        # Analizar sentimiento sobre el TEXTO ORIGINAL (inglés) para mejor precisión
-        # Pero traducir para mostrar al usuario en español
-        texts_for_sentiment = [c['text_original'][:512] for c in unique_comments]
+        # PASO 2: Analizar sentimiento sobre el TEXTO EN INGLÉS (el modelo está entrenado en inglés)
+        # Usar la traducción si existe
+        texts_for_sentiment = [translations_to_english.get(t, t) for t in texts_original]
         sentiments = []
         if sentiment_analyzer and texts_for_sentiment:
             self.progress_callback(f"Analizando sentimiento de {len(texts_for_sentiment)} comentarios (en inglés para mayor precisión)...")
@@ -143,16 +161,24 @@ class RedditScraper:
             
             if i < len(sentiments):
                 s_res = sentiments[i]
-                sentiment_label = _mapear_sentimiento(s_res['label'])
-                sentiment_score = str(round(s_res.get('score', 0.0), 4))
+                raw_label = s_res['label']
+                raw_score = s_res.get('score', 0.0)
+                
+                # Aplicar umbral de confianza para evitar exceso de 'neutral'
+                # Umbral reducido para ser menos conservador en Reddit (texto en inglés)
+                sentiment_label, used_score = analizar_sentimiento_con_umbral(raw_label, raw_score, umbral_confianza=0.35)
+                sentiment_score = str(round(used_score, 4))
             
-            text_translated = translated_texts.get(comment_data['text_original'], comment_data['text_original'])
+            # Obtener la traducción a inglés (para análisis)
+            english_text = translations_to_english.get(comment_data['text_original'], comment_data['text_original'])
             
+            # IMPORTANTE: Guardar siempre el texto original en text_original
+            # y la versión en inglés (traducida o ya en inglés) en text_translated
             new_comment = Comment(
                 publication_id=comment_data['publication_id'],
                 author=comment_data['author'],
-                text_original=comment_data['text_original'],
-                text_translated=text_translated,
+                text_original=comment_data['text_original'],  # Texto original (puede ser español/inglés)
+                text_translated=english_text,  # Versión en inglés (para referencia)
                 sentiment_label=sentiment_label,
                 sentiment_score=sentiment_score
             )
@@ -164,7 +190,7 @@ class RedditScraper:
             return len(new_comments_to_add)
         return 0
 
-    def scrape(self, subreddit_name: str, post_limit: int, comment_limit: int, translator: Optional[Callable], sentiment_analyzer: Optional[Callable]):
+    def scrape(self, subreddit_name: str, post_limit: int, comment_limit: int, translator: Optional[Callable], sentiment_analyzer: Optional[Callable], stop_event: Optional[threading.Event] = None):
         if not self.reddit:
             return
 
@@ -173,22 +199,116 @@ class RedditScraper:
         nuevos_comentarios_totales = 0
 
         try:
-            self.progress_callback(f"Descargando {post_limit} publicaciones de r/{subreddit_name}...")
+            self.progress_callback(f"Descargando publicaciones de r/{subreddit_name}...")
             subreddit = self.reddit.subreddit(subreddit_name)
-            posts = list(subreddit.hot(limit=post_limit))
+
+            # Buscar MÁS posts de los solicitados (2x) para tener variedad
+            # y poder encontrar posts nuevos que no estén en la BD
+            total_limit = max(1, int(post_limit))
+            search_multiplier = 2
+            search_limit = total_limit * search_multiplier
             
+            # Distribuir entre 5 categorías para máxima cobertura
+            hot_limit = max(1, int(search_limit * 0.3))
+            new_limit = max(1, int(search_limit * 0.3))
+            rising_limit = max(1, int(search_limit * 0.2))
+            top_limit = max(1, int(search_limit * 0.1))
+            controversial_limit = max(1, int(search_limit * 0.1))
+            
+            self.progress_callback(f"  └ Buscando en hot ({hot_limit})...")
+            posts_hot = list(subreddit.hot(limit=hot_limit))
+
+            if stop_event is not None and stop_event.is_set():
+                self.progress_callback("⏹️ Detención solicitada.")
+                session.close()
+                return
+
+            self.progress_callback(f"  └ Buscando en new ({new_limit})...")
+            posts_new = list(subreddit.new(limit=new_limit))
+
+            if stop_event is not None and stop_event.is_set():
+                self.progress_callback("⏹️ Detención solicitada.")
+                session.close()
+                return
+
+            self.progress_callback(f"  └ Buscando en rising ({rising_limit})...")
+            posts_rising = list(subreddit.rising(limit=rising_limit))
+
+            if stop_event is not None and stop_event.is_set():
+                self.progress_callback("⏹️ Detención solicitada.")
+                session.close()
+                return
+
+            self.progress_callback(f"  └ Buscando en top recientes ({top_limit})...")
+            posts_top = list(subreddit.top(time_filter='week', limit=top_limit))
+
+            if stop_event is not None and stop_event.is_set():
+                self.progress_callback("⏹️ Detención solicitada.")
+                session.close()
+                return
+
+            self.progress_callback(f"  └ Buscando en controversial ({controversial_limit})...")
+            posts_controversial = list(subreddit.controversial(time_filter='week', limit=controversial_limit))
+
+            # Deduplicar por ID
+            posts_dict = {}
+            for post in posts_hot + posts_new + posts_rising + posts_top + posts_controversial:
+                posts_dict[post.id] = post
+            
+            all_posts = list(posts_dict.values())
+            self.progress_callback(f"  └ Total encontrados antes de filtrar: {len(all_posts)}")
+            
+            # Priorizar posts que NO están en la BD
+            existing_post_ids = set()
+            if all_posts:
+                post_ids_check = [p.id for p in all_posts]
+                existing_query = session.query(Publication.id).filter(Publication.id.in_(post_ids_check))
+                existing_post_ids = {pid[0] for pid in existing_query}
+            
+            # Separar posts nuevos y existentes
+            new_posts = [p for p in all_posts if p.id not in existing_post_ids]
+            existing_posts = [p for p in all_posts if p.id in existing_post_ids]
+            
+            # Priorizar nuevos, luego agregar existentes si hacen falta
+            posts = (new_posts + existing_posts)[:total_limit]
+
+            self.progress_callback(f"✅ Total de publicaciones únicas encontradas: {len(posts)}")
+
             if not posts:
                 self.progress_callback("No se encontraron publicaciones.")
                 return
 
-            nuevas_publicaciones_totales = self._process_and_save_publications(session, posts, translator)
-            nuevos_comentarios_totales = self._process_and_save_comments(session, posts, comment_limit, translator, sentiment_analyzer)
-
-            if nuevas_publicaciones_totales > 0 or nuevos_comentarios_totales > 0:
-                self.progress_callback("Guardando todos los cambios en la base de datos...")
+            # Primero: Procesar y guardar todas las publicaciones nuevas
+            added_pubs = self._process_and_save_publications(session, posts, translator)
+            nuevas_publicaciones_totales += added_pubs
+            if added_pubs > 0:
                 session.commit()
-            else:
-                self.progress_callback("No se encontraron datos nuevos para guardar.")
+                self.progress_callback(f"  └ {added_pubs} publicaciones nuevas guardadas.")
+            
+            # Segundo: Procesar comentarios de TODOS los posts (nuevos y existentes)
+            # para permitir agregar comentarios nuevos a posts que ya existían
+            if stop_event is not None and stop_event.is_set():
+                self.progress_callback("⏹️ Detención solicitada.")
+                session.close()
+                return
+            
+            # Procesar comentarios por lotes para permitir commits parciales
+            batch_size = max(1, min(10, len(posts)))
+            for i in range(0, len(posts), batch_size):
+                batch = posts[i:i+batch_size]
+                if stop_event is not None and stop_event.is_set():
+                    self.progress_callback("⏹️ Detención solicitada. Guardando progreso parcial...")
+                    session.commit()
+                    break
+
+                added_comments = self._process_and_save_comments(session, batch, comment_limit, translator, sentiment_analyzer)
+                nuevos_comentarios_totales += added_comments
+                # Commit incremental
+                if added_comments > 0:
+                    session.commit()
+
+            if nuevas_publicaciones_totales == 0 and nuevos_comentarios_totales == 0:
+                self.progress_callback("ℹ️ No se encontraron datos nuevos (ya tienes estos posts/comentarios en la BD).")
 
         except Exception as e:
             session.rollback()
@@ -203,10 +323,11 @@ def run_reddit_scrape_opt(
     sentiment_analyzer: Optional[Callable], 
     subreddit_name: str, 
     post_limit: int, 
-    comment_limit: int
+    comment_limit: int,
+    stop_event: Optional[threading.Event] = None
 ) -> None:
     """
     Versión PostgreSQL optimizada para Reddit con procesamiento por lotes.
     """
     scraper = RedditScraper(progress_callback)
-    scraper.scrape(subreddit_name, post_limit, comment_limit, translator, sentiment_analyzer)
+    scraper.scrape(subreddit_name, post_limit, comment_limit, translator, sentiment_analyzer, stop_event=stop_event)
