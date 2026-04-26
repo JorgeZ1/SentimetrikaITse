@@ -1,7 +1,7 @@
-api de redit ¨¨¨ rrv_ZE2GFWJ1oTEeU2kSdxzUSddv_Q ¨¨¨
+api de redit
 
-CLIENT_ID = "x3oygaxZEIuPqIwn2c7kDg"
-CLIENT_SECRET = "rrv_ZE2GFWJ1oTEeU2kSdxzUSddv_Q"
+CLIENT_ID = 
+CLIENT_SECRET = "
 
 tambien -> pip install praw 
 
